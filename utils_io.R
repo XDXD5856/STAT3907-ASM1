@@ -4,7 +4,7 @@ create_output_dirs <- function(config) {
   file_dirs <- unique(dirname(unlist(config$files, use.names = FALSE)))
   run_nested_dirs <- file.path(
     config$paths$results,
-    c("data/raw", "data/raw/tickers", "data/processed", "results", "report", "submission", "logs")
+    c("results", "report", "submission", "logs")
   )
   dirs <- unique(c(
     config$paths$data_raw,
@@ -93,6 +93,9 @@ get_latest_unfinished_run_id <- function(base_config) {
 
 apply_run_paths <- function(config, run_id) {
   base_paths <- config$paths
+  shared_root <- if (!is.null(config$shared_data_path)) config$shared_data_path else "data"
+  shared_raw <- file.path(shared_root, "raw")
+  shared_processed <- file.path(shared_root, "processed")
   run_results <- file.path(base_paths$results, run_id)
   run_logs <- file.path(base_paths$logs, run_id)
   run_report <- file.path(base_paths$report, run_id)
@@ -128,14 +131,14 @@ apply_run_paths <- function(config, run_id) {
   )
 
   config$files <- list(
-    stage12_universe = file.path(run_results, "data/raw/universe_tickers.csv"),
-    stage12_raw_panel = file.path(run_results, "data/raw/hk_stock_price_data.csv"),
-    stage12_failed = file.path(run_results, "data/raw/failed_stocks.csv"),
-    stage12_ticker_dir = file.path(run_results, "data/raw/tickers"),
+    stage12_universe = file.path(shared_raw, "universe_tickers.csv"),
+    stage12_raw_panel = file.path(shared_raw, "hk_stock_price_data.csv"),
+    stage12_failed = file.path(shared_raw, "failed_stocks.csv"),
+    stage12_ticker_dir = file.path(shared_raw, "tickers"),
 
-    stage3_ticker_dir = file.path(run_results, "data/processed/tickers_features"),
-    stage3_model_panel = file.path(run_results, "data/processed/feature_panel.csv"),
-    stage3_summary = file.path(run_results, "data/processed/feature_summary.csv"),
+    stage3_ticker_dir = file.path(shared_processed, "tickers_features"),
+    stage3_model_panel = file.path(shared_processed, "feature_panel.csv"),
+    stage3_summary = file.path(shared_processed, "feature_summary.csv"),
     stage3_plot_target = file.path(run_results, "stage3_target_21d_distribution.png"),
     stage3_plot_ret1d = file.path(run_results, "stage3_ret_1d_distribution.png"),
 
@@ -168,7 +171,12 @@ apply_run_paths <- function(config, run_id) {
 }
 
 initialize_run_dirs <- function(config) {
-  results_root <- config$paths$results
+  if (!is.null(config$shared_data_path)) {
+    config$paths$data_raw <- file.path(config$shared_data_path, "raw")
+    config$paths$data_processed <- file.path(config$shared_data_path, "processed")
+  }
+  results_root <- if (!is.null(config$run_output_path)) config$run_output_path else config$paths$results
+  config$paths$results <- results_root
   if (!dir.exists(results_root)) dir.create(results_root, recursive = TRUE, showWarnings = FALSE)
 
   selected_run <- NULL

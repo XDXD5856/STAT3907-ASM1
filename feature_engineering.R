@@ -52,6 +52,10 @@ create_ticker_features <- function(d0, horizon = 21, include_time_index = FALSE)
 
 build_features_and_target <- function(raw_panel_df, config) {
   write_stage_log("stage3", "Stage 3 started", config)
+  if (!isTRUE(config$refresh_features) && file.exists(config$files$stage3_model_panel)) {
+    write_stage_log("stage3", "refresh_features=FALSE and feature panel exists; reusing local files", config)
+    return(load_stage3_outputs(config))
+  }
 
   per_ticker <- list(); summary_rows <- list()
   for (tk in unique(raw_panel_df$ticker)) {

@@ -38,6 +38,7 @@ get_config <- function() {
     resume_run = TRUE,
     run_id = NULL,
     start_new_run = FALSE,
+    refresh_features = FALSE,
     refresh_download = FALSE,
     refresh_model_search = FALSE,
     stage4_progress_every = 50,
@@ -47,6 +48,8 @@ get_config <- function() {
     stage4_include_time_index = FALSE,
     investment_hkd = 1000000,
     top_n_chart = 20,
+    shared_data_path = "data",
+    run_output_path = "results",
     paths = list(
       data_raw = "data/raw",
       data_processed = "data/processed",

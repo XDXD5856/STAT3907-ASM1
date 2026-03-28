@@ -55,8 +55,15 @@ load_and_clean_data <- function(config) {
   for (i in seq_len(nrow(universe))) {
     s <- universe$ticker[i]
     write_stage_log("stage12", paste0("Downloading: ", s), config)
+    ticker_raw_path <- file.path(config$files$stage12_ticker_dir, paste0(s, "_raw.csv"))
 
-    d <- tryCatch(download_single_ticker_history(s, config$start_date, config$end_date), error = function(e) NULL)
+    if (!isTRUE(config$refresh_download) && file.exists(ticker_raw_path)) {
+      d <- tryCatch(utils::read.csv(ticker_raw_path, stringsAsFactors = FALSE), error = function(e) NULL)
+      if (!is.null(d) && "date" %in% names(d)) d$date <- as.Date(d$date)
+      write_stage_log("stage12", paste0("Using cached raw ticker file: ", s), config)
+    } else {
+      d <- tryCatch(download_single_ticker_history(s, config$start_date, config$end_date), error = function(e) NULL)
+    }
 
     if (is.null(d) || nrow(d) == 0) {
       failed_list[[length(failed_list) + 1]] <- data.frame(ticker = s, stock_code = universe$stock_code[i], reason = "download_failed_or_empty", stringsAsFactors = FALSE)
@@ -81,7 +88,7 @@ load_and_clean_data <- function(config) {
     d <- d[, c("ticker", "stock_code", "date", "open", "high", "low", "close", "volume", "adjusted_close")]
     success_list[[length(success_list) + 1]] <- d
 
-    safe_write_csv(d, file.path(config$files$stage12_ticker_dir, paste0(s, "_raw.csv")))
+    safe_write_csv(d, ticker_raw_path)
     save_stage_plot(
       plot_expr = function() plot(d$date, d$close, type = "l", col = "steelblue", xlab = "Date", ylab = "Close", main = paste("Close", s)),
       file_path = file.path(config$files$stage12_ticker_dir, paste0(s, "_close.png"))
