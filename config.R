@@ -19,6 +19,9 @@ load_required_packages <- function(attach = TRUE) {
     invisible(lapply(pkgs, library, character.only = TRUE))
   }
 
+load_required_packages <- function() {
+  pkgs <- c("quantmod", "tidyverse", "lubridate", "broom")
+  # Skeleton only: package checks/loading can be expanded later.
   invisible(pkgs)
 }
 
