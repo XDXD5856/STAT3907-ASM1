@@ -29,6 +29,13 @@ get_config <- function() {
     train_ratio = 0.7,
     max_predictors = 15,
     candidate_predictors = NULL,
+    refresh_download = FALSE,
+    refresh_model_search = FALSE,
+    stage4_progress_every = 50,
+    stage4_partial_save_every = 50,
+    stage4_use_rolling_window = FALSE,
+    stage4_rolling_window_size = 252,
+    stage4_include_time_index = FALSE,
     investment_hkd = 1000000,
     top_n_chart = 20,
     paths = list(
@@ -61,12 +68,14 @@ get_config <- function() {
 
       stage4_all_models = "results/all_models.csv",
       stage4_best_model_summary = "results/best_model_summary.txt",
+      stage4_summary = "results/stage4_summary.txt",
       stage4_best_predictors = "results/best_predictors.csv",
       stage4_split_info = "results/split_info.csv",
       stage4_pred_vs_actual = "results/predicted_vs_actual.csv",
       stage4_plot_rmse = "results/rmse_by_model_rank.png",
       stage4_plot_top20 = "results/top20_models_bar.png",
       stage4_plot_scatter = "results/best_model_pred_vs_actual.png",
+      stage4_all_models_partial = "outputs/stage4_model_search/all_models_partial.csv",
 
       stage5_predictions = "results/predictions_latest.csv",
       stage5_latest_obs = "results/latest_observations_used.csv",
