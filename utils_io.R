@@ -9,7 +9,8 @@ create_output_dirs <- function(config) {
     config$paths$submission,
     config$paths$logs,
     config$files$stage12_ticker_dir,
-    config$files$stage3_ticker_dir
+    config$files$stage3_ticker_dir,
+    dirname(config$files$stage4_all_models_partial)
   )
   for (d in dirs) if (!dir.exists(d)) dir.create(d, recursive = TRUE, showWarnings = FALSE)
   invisible(dirs)

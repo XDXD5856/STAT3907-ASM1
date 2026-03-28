@@ -31,7 +31,7 @@ rolling_sd <- function(x, k) {
   out
 }
 
-create_ticker_features <- function(d0, horizon = 21) {
+create_ticker_features <- function(d0, horizon = 21, include_time_index = FALSE) {
   d <- d0[order(d0$date), , drop = FALSE]
   cpx <- d$close; vol <- d$volume
   d$ret_1d <- safe_log_return(cpx, 1)
@@ -45,6 +45,7 @@ create_ticker_features <- function(d0, horizon = 21) {
   d$ma_ratio_5_21 <- rolling_mean(cpx, 5) / rolling_mean(cpx, 21)
   d$volatility_21 <- rolling_sd(d$ret_1d, 21)
   d$volume_z_21 <- (vol - rolling_mean(vol, 21)) / pmax(rolling_sd(vol, 21), 1e-8)
+  if (isTRUE(include_time_index)) d$time_index <- seq_len(nrow(d))
   d$target_21d <- forward_log_return(cpx, horizon)
   d
 }
@@ -57,7 +58,7 @@ build_features_and_target <- function(raw_panel_df, config) {
     d0 <- raw_panel_df[raw_panel_df$ticker == tk, , drop = FALSE]
     if (nrow(d0) < (config$target_horizon + 30)) next
 
-    d1 <- create_ticker_features(d0, config$target_horizon)
+    d1 <- create_ticker_features(d0, config$target_horizon, isTRUE(config$stage4_include_time_index))
     utils::write.csv(d1, file.path(config$files$stage3_ticker_dir, paste0(tk, "_features.csv")), row.names = FALSE)
 
     fcols <- setdiff(names(d1), c("ticker", "stock_code", "date"))
