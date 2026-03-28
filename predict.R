@@ -31,8 +31,8 @@ run_prediction <- function(model_result, model_panel_df, config) {
     stringsAsFactors = FALSE
   )
 
-  utils::write.csv(out, config$files$stage5_predictions, row.names = FALSE)
-  utils::write.csv(ready, config$files$stage5_latest_obs, row.names = FALSE)
+  safe_write_csv(out, config$files$stage5_predictions)
+  safe_write_csv(ready, config$files$stage5_latest_obs)
 
   save_stage_plot(function() hist(out$predicted_return_21d, breaks = 40, col = "lightblue", main = "Predicted return", xlab = "predicted_return_21d"), config$files$stage5_hist)
   top_n <- min(config$top_n_chart, nrow(out)); top_df <- out[order(-out$predicted_return_21d), ][1:top_n, , drop = FALSE]

@@ -46,7 +46,7 @@ search_best_model <- function(dataset, config, target_col = "target_21d", candid
     va_best <- valid_df[complete.cases(valid_df[, c(target_col, bp), drop = FALSE]), c(target_col, bp), drop = FALSE]
     pred <- as.numeric(predict(fit, newdata = va_best))
     pva <- data.frame(actual = va_best[[target_col]], predicted = pred)
-    if (nrow(pva) > 0) utils::write.csv(pva, config$files$stage4_pred_vs_actual, row.names = FALSE)
+    if (nrow(pva) > 0) safe_write_csv(pva, config$files$stage4_pred_vs_actual)
 
     write_stage4_runtime_summary(config, stage4_start, Sys.time(), nrow(cached_models), cached_models$valid_rmse[1], skipped = TRUE, filtered_count = NA_integer_, total_combinations = NA_integer_)
     return(list(best_model = fit, best_formula = fm, best_predictors = bp, best_metrics = cached_models[1, , drop = FALSE], all_models = cached_models, complexity_summary = if (file.exists(config$files$stage4_model_complexity_summary)) utils::read.csv(config$files$stage4_model_complexity_summary, stringsAsFactors = FALSE) else data.frame(), selected_k = length(bp), split_info = list(train_n = nrow(train_df), valid_n = nrow(valid_df), train_ratio = config$train_ratio)))
@@ -100,7 +100,7 @@ search_best_model <- function(dataset, config, target_col = "target_21d", candid
         write_stage_log("stage4", paste0("Progress: evaluated ", combo_counter, "/", total_combos, " combinations; valid_models=", length(results)), config)
       }
       if (length(results) > 0 && combo_counter %% partial_save_every == 0L) {
-        utils::write.csv(do.call(rbind, results), config$files$stage4_all_models_partial, row.names = FALSE)
+        safe_write_csv(do.call(rbind, results), config$files$stage4_all_models_partial)
       }
     }
   }
@@ -121,7 +121,7 @@ search_best_model <- function(dataset, config, target_col = "target_21d", candid
       )
     })
   )
-  utils::write.csv(complexity_summary, config$files$stage4_model_complexity_summary, row.names = FALSE)
+  safe_write_csv(complexity_summary, config$files$stage4_model_complexity_summary)
   k_choice <- choose_optimal_k(complexity_summary, config)
   selected_k <- as.integer(k_choice$k)
   write_stage_log("stage4", paste0("Selected predictor count k=", selected_k, " reason: ", k_choice$reason), config)
@@ -141,11 +141,11 @@ search_best_model <- function(dataset, config, target_col = "target_21d", candid
   pred <- as.numeric(predict(best_obj$model, newdata = va_best))
   pva <- data.frame(actual = va_best[[target_col]], predicted = pred)
 
-  utils::write.csv(all_models, config$files$stage4_all_models, row.names = FALSE)
-  utils::write.csv(data.frame(predictor = best_obj$predictors), config$files$stage4_best_predictors, row.names = FALSE)
-  utils::write.csv(data.frame(train_n = nrow(train_df), valid_n = nrow(valid_df), train_ratio = config$train_ratio), config$files$stage4_split_info, row.names = FALSE)
-  utils::write.csv(pva, config$files$stage4_pred_vs_actual, row.names = FALSE)
-  writeLines(c(paste0("selected_k: ", selected_k), paste0("selection_reason: ", k_choice$reason), paste0("best_formula: ", deparse(best_obj$formula)), paste0("best_rmse: ", best_candidates$valid_rmse[1]), paste0("best_adj_r2: ", best_candidates$adj_r_squared[1]), paste0("best_aic: ", best_candidates$aic[1]), paste0("best_bic: ", best_candidates$bic[1]), paste0("best_ic: ", best_candidates$ic[1])), config$files$stage4_best_model_summary)
+  safe_write_csv(all_models, config$files$stage4_all_models)
+  safe_write_csv(data.frame(predictor = best_obj$predictors), config$files$stage4_best_predictors)
+  safe_write_csv(data.frame(train_n = nrow(train_df), valid_n = nrow(valid_df), train_ratio = config$train_ratio), config$files$stage4_split_info)
+  safe_write_csv(pva, config$files$stage4_pred_vs_actual)
+  safe_write_lines(c(paste0("selected_k: ", selected_k), paste0("selection_reason: ", k_choice$reason), paste0("best_formula: ", deparse(best_obj$formula)), paste0("best_rmse: ", best_candidates$valid_rmse[1]), paste0("best_adj_r2: ", best_candidates$adj_r_squared[1]), paste0("best_aic: ", best_candidates$aic[1]), paste0("best_bic: ", best_candidates$bic[1]), paste0("best_ic: ", best_candidates$ic[1])), config$files$stage4_best_model_summary)
   write_stage4_runtime_summary(config, stage4_start, Sys.time(), nrow(all_models), best_candidates$valid_rmse[1], skipped = FALSE, filtered_count = filtered_counter, total_combinations = total_combos)
 
   save_stage_plot(function() plot(seq_len(nrow(all_models)), all_models$valid_rmse, type = "l", col = "steelblue", xlab = "Model rank", ylab = "RMSE", main = "RMSE by model rank"), config$files$stage4_plot_rmse)
@@ -258,7 +258,7 @@ is_valid_feature_group_combo <- function(predictors, feature_map, required_group
 write_stage4_runtime_summary <- function(config, start_time, end_time, model_count, best_rmse, skipped = FALSE, filtered_count = NA_integer_, total_combinations = NA_integer_) {
   elapsed_sec <- as.numeric(difftime(end_time, start_time, units = "secs"))
   elapsed_min <- elapsed_sec / 60
-  writeLines(
+  safe_write_lines(
     c(
       paste0("stage4_started_at: ", format(start_time, "%Y-%m-%d %H:%M:%S")),
       paste0("stage4_finished_at: ", format(end_time, "%Y-%m-%d %H:%M:%S")),

@@ -2,6 +2,10 @@
 
 create_output_dirs <- function(config) {
   file_dirs <- unique(dirname(unlist(config$files, use.names = FALSE)))
+  run_nested_dirs <- file.path(
+    config$paths$results,
+    c("data/raw", "data/raw/tickers", "data/processed", "results", "report", "submission", "logs")
+  )
   dirs <- unique(c(
     config$paths$data_raw,
     config$paths$data_processed,
@@ -9,10 +13,27 @@ create_output_dirs <- function(config) {
     config$paths$report,
     config$paths$submission,
     config$paths$logs,
-    file_dirs
+    file_dirs,
+    run_nested_dirs
   ))
   for (d in dirs) if (!dir.exists(d)) dir.create(d, recursive = TRUE, showWarnings = FALSE)
   invisible(dirs)
+}
+
+ensure_parent_dir <- function(path) {
+  parent <- dirname(path)
+  if (!dir.exists(parent)) dir.create(parent, recursive = TRUE, showWarnings = FALSE)
+  invisible(parent)
+}
+
+safe_write_csv <- function(df, path) {
+  ensure_parent_dir(path)
+  utils::write.csv(df, path, row.names = FALSE)
+}
+
+safe_write_lines <- function(lines, path) {
+  ensure_parent_dir(path)
+  writeLines(lines, path)
 }
 
 list_run_ids <- function(results_root) {
@@ -51,7 +72,7 @@ is_stage_done <- function(stage_key, config) {
 
 mark_stage_done <- function(stage_key, config) {
   markers <- stage_done_marker_map(config)
-  writeLines(format(Sys.time(), "%Y-%m-%d %H:%M:%S"), markers[[stage_key]])
+  safe_write_lines(format(Sys.time(), "%Y-%m-%d %H:%M:%S"), markers[[stage_key]])
 }
 
 is_run_complete <- function(config) {
@@ -187,7 +208,7 @@ write_run_manifest <- function(config, end_time = NULL) {
     paste0("stage6_report: ", config$files$stage6_final_report),
     paste0("submission_ranked: ", config$files$submission_ranked)
   )
-  writeLines(lines, config$run$manifest_path)
+  safe_write_lines(lines, config$run$manifest_path)
 }
 
 is_console_important_message <- function(stage_key, message_text) {
@@ -206,6 +227,7 @@ append_log_line <- function(path, msg, to_console = TRUE) {
   ts <- format(Sys.time(), "%Y-%m-%d %H:%M:%S")
   line <- paste0("[", ts, "] ", msg)
   if (isTRUE(to_console)) cat(line, "\n")
+  ensure_parent_dir(path)
   cat(line, "\n", file = path, append = TRUE)
 }
 
@@ -220,6 +242,7 @@ write_master_log <- function(message_text, config) {
 }
 
 save_stage_plot <- function(plot_expr, file_path, width = 1000, height = 700) {
+  ensure_parent_dir(file_path)
   grDevices::png(file_path, width = width, height = height)
   try(plot_expr(), silent = TRUE)
   grDevices::dev.off()

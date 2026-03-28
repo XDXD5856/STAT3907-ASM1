@@ -46,7 +46,7 @@ load_and_clean_data <- function(config) {
   }
 
   universe <- build_universe_from_codes(config)
-  utils::write.csv(universe, config$files$stage12_universe, row.names = FALSE)
+  safe_write_csv(universe, config$files$stage12_universe)
   write_stage_log("stage12", paste0("Universe size from fixed codes: ", nrow(universe)), config)
 
   success_list <- list()
@@ -81,7 +81,7 @@ load_and_clean_data <- function(config) {
     d <- d[, c("ticker", "stock_code", "date", "open", "high", "low", "close", "volume", "adjusted_close")]
     success_list[[length(success_list) + 1]] <- d
 
-    utils::write.csv(d, file.path(config$files$stage12_ticker_dir, paste0(s, "_raw.csv")), row.names = FALSE)
+    safe_write_csv(d, file.path(config$files$stage12_ticker_dir, paste0(s, "_raw.csv")))
     save_stage_plot(
       plot_expr = function() plot(d$date, d$close, type = "l", col = "steelblue", xlab = "Date", ylab = "Close", main = paste("Close", s)),
       file_path = file.path(config$files$stage12_ticker_dir, paste0(s, "_close.png"))
@@ -96,8 +96,8 @@ load_and_clean_data <- function(config) {
 
   failed_df <- if (length(failed_list) > 0) do.call(rbind, failed_list) else data.frame()
 
-  utils::write.csv(raw_panel, config$files$stage12_raw_panel, row.names = FALSE)
-  utils::write.csv(failed_df, config$files$stage12_failed, row.names = FALSE)
+  safe_write_csv(raw_panel, config$files$stage12_raw_panel)
+  safe_write_csv(failed_df, config$files$stage12_failed)
 
   write_stage_log("stage12", paste0("Stage 1+2 completed: success_tickers=", length(unique(raw_panel$ticker)), ", failed=", nrow(failed_df)), config)
   raw_panel

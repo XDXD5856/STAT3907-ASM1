@@ -59,7 +59,7 @@ build_features_and_target <- function(raw_panel_df, config) {
     if (nrow(d0) < (config$target_horizon + 30)) next
 
     d1 <- create_ticker_features(d0, config$target_horizon, isTRUE(config$stage4_include_time_index))
-    utils::write.csv(d1, file.path(config$files$stage3_ticker_dir, paste0(tk, "_features.csv")), row.names = FALSE)
+    safe_write_csv(d1, file.path(config$files$stage3_ticker_dir, paste0(tk, "_features.csv")))
 
     fcols <- setdiff(names(d1), c("ticker", "stock_code", "date"))
     summary_rows[[length(summary_rows) + 1]] <- data.frame(ticker = tk, rows = nrow(d1), missing_ratio = mean(!complete.cases(d1[, fcols, drop = FALSE])), stringsAsFactors = FALSE)
@@ -72,8 +72,8 @@ build_features_and_target <- function(raw_panel_df, config) {
   model_panel <- model_panel[order(model_panel$ticker, model_panel$date), , drop = FALSE]
   model_panel <- model_panel[!is.na(model_panel$target_21d), , drop = FALSE]
 
-  utils::write.csv(model_panel, config$files$stage3_model_panel, row.names = FALSE)
-  utils::write.csv(do.call(rbind, summary_rows), config$files$stage3_summary, row.names = FALSE)
+  safe_write_csv(model_panel, config$files$stage3_model_panel)
+  safe_write_csv(do.call(rbind, summary_rows), config$files$stage3_summary)
 
   save_stage_plot(function() hist(model_panel$target_21d, breaks = 60, col = "skyblue", main = "target_21d", xlab = "target_21d"), config$files$stage3_plot_target)
   save_stage_plot(function() hist(model_panel$ret_1d, breaks = 60, col = "tan", main = "ret_1d", xlab = "ret_1d"), config$files$stage3_plot_ret1d)

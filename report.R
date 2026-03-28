@@ -35,12 +35,12 @@ generate_report <- function(prediction_result, raw_panel_df, model_result, unive
   write_stage_log("stage6", "Stage 6 started", config)
 
   ranked <- rank_stocks(prediction_result)
-  utils::write.csv(ranked, config$files$stage6_ranked, row.names = FALSE)
+  safe_write_csv(ranked, config$files$stage6_ranked)
 
   latest_px <- raw_panel_df[order(raw_panel_df$ticker, raw_panel_df$date), c("ticker", "close")]
   latest_px <- latest_px[!duplicated(latest_px$ticker, fromLast = TRUE), , drop = FALSE]
   top_pick <- select_top_stock(ranked, latest_px, config$investment_hkd)
-  utils::write.csv(top_pick, config$files$stage6_top_pick, row.names = FALSE)
+  safe_write_csv(top_pick, config$files$stage6_top_pick)
 
   top10 <- head(ranked, 10)
   lines <- c(
@@ -54,7 +54,7 @@ generate_report <- function(prediction_result, raw_panel_df, model_result, unive
     paste(apply(top10[, c("rank", "ticker", "company_name", "predicted_return_21d", "risk_adjusted_score")], 1, paste, collapse = " | "), collapse = "\n"),
     paste0("final stock choice for HKD 1,000,000: ", top_pick$ticker, " (", top_pick$company_name, ")")
   )
-  writeLines(lines, config$files$stage6_final_report)
+  safe_write_lines(lines, config$files$stage6_final_report)
 
   file.copy(config$files$stage6_ranked, config$files$submission_ranked, overwrite = TRUE)
   file.copy(config$files$stage6_top_pick, config$files$submission_top_pick, overwrite = TRUE)
