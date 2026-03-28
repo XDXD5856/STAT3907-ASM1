@@ -52,7 +52,7 @@ search_best_model <- function(dataset, config, target_col = "target_21d", candid
     return(list(best_model = fit, best_formula = fm, best_predictors = bp, best_metrics = cached_models[1, , drop = FALSE], all_models = cached_models, complexity_summary = if (file.exists(config$files$stage4_model_complexity_summary)) utils::read.csv(config$files$stage4_model_complexity_summary, stringsAsFactors = FALSE) else data.frame(), selected_k = length(bp), split_info = list(train_n = nrow(train_df), valid_n = nrow(valid_df), train_ratio = config$train_ratio)))
   }
 
-  combos_by_k <- vapply(k_values, function(k) utils::choose(length(avail), k), numeric(1))
+  combos_by_k <- vapply(k_values, function(k) choose(length(avail), k), numeric(1))
   total_combos <- as.integer(sum(combos_by_k))
   write_stage_log("stage4", paste0("Total predictor combinations to evaluate: ", total_combos), config)
 
