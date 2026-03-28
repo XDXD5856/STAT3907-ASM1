@@ -11,6 +11,11 @@ source("report.R")
 main <- function() {
   message("Starting pipeline...")
 
+  # Load config and prepare environment
+  config <- get_config()
+  load_required_packages(attach = TRUE)
+  initialize_project_dirs(config)
+
   # Stage 1: Download and clean data
   # data_list <- load_and_clean_data(config)
 
