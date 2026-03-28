@@ -1,40 +1,34 @@
-# HKEX Stock Selection Pipeline (R)
+# STAT3907-ASM1 (R Project Skeleton)
 
-This project builds a full Stage 1-6 pipeline for Hong Kong stock selection:
+This repository currently contains a modular skeleton for a Hong Kong stock selection pipeline.
 
-1. Universe construction (HKEX official list -> qualified stocks)
-2. Yahoo Finance data download (`quantmod::getSymbols(..., src = "yahoo")`)
-3. Feature engineering + `target_21d`
-4. OLS model selection via exhaustive predictor combinations
-5. Next-period prediction per ticker (latest observation)
-6. Ranking and final top-stock investment choice
+## Current Status
+- Stage files and function skeletons are created.
+- Full stage logic is intentionally not implemented yet.
 
-## Run
+## Run Locally
+1. Install R (recommended 4.2+).
+2. Install required packages:
 
 ```r
-install.packages(c("quantmod", "tidyverse", "lubridate", "broom", "zoo"))
+install.packages(c("quantmod", "tidyverse", "lubridate", "broom"))
 ```
+
+3. Run from project root:
 
 ```bash
 Rscript main.R
 ```
 
-## Stage I/O
+Expected current output:
+- `Starting pipeline...`
+- `Pipeline structure created. Logic implementation pending.`
 
-- Stage 1 output: qualified stock universe (`data.frame` with `ticker`)
-- Stage 2 output: raw panel with columns:
-  `ticker, date, open, high, low, close, volume, adjusted_close`
-- Stage 3 output: model-ready panel with required columns:
-  `ticker, date, target_21d` + numeric predictors
-- Stage 4 output: best model object + model metrics table (`all_models`)
-- Stage 5 output: one row per ticker:
-  `ticker, prediction_date, predicted_return_21d`
-- Stage 6 output:
-  ranked table + top-pick table (HKD 1,000,000 all-in single stock)
-
-## Notes
-
-- Model uses OLS (`lm`) only.
-- Predictor combinations are tested with explicit for-loops.
-- Time-series split is used (no random shuffle).
-- `max_predictors` is read from config (default 15).
+## Project Files
+- `main.R` — entrypoint and stage orchestration order
+- `config.R` — package checks, global config, directory initialization
+- `data_loader.R` — Stage 1 skeleton
+- `feature_engineering.R` — Stage 2 skeleton
+- `model_search.R` — Stage 3 skeleton
+- `predict.R` — Stage 4/5 skeleton
+- `report.R` — Stage 6 skeleton
