@@ -54,7 +54,6 @@ load_and_clean_data <- function(config) {
 
   for (i in seq_len(nrow(universe))) {
     s <- universe$ticker[i]
-    cat("Downloading:", s, "\n")
     write_stage_log("stage12", paste0("Downloading: ", s), config)
 
     d <- tryCatch(download_single_ticker_history(s, config$start_date, config$end_date), error = function(e) NULL)
@@ -102,4 +101,11 @@ load_and_clean_data <- function(config) {
 
   write_stage_log("stage12", paste0("Stage 1+2 completed: success_tickers=", length(unique(raw_panel$ticker)), ", failed=", nrow(failed_df)), config)
   raw_panel
+}
+
+load_stage12_outputs <- function(config) {
+  if (!file.exists(config$files$stage12_raw_panel)) stop("Stage 1+2 cached output not found")
+  raw_panel_cached <- utils::read.csv(config$files$stage12_raw_panel, stringsAsFactors = FALSE)
+  if ("date" %in% names(raw_panel_cached)) raw_panel_cached$date <- as.Date(raw_panel_cached$date)
+  raw_panel_cached
 }

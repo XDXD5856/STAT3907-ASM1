@@ -81,3 +81,10 @@ build_features_and_target <- function(raw_panel_df, config) {
   write_stage_log("stage3", paste0("Stage 3 completed: rows=", nrow(model_panel), ", tickers=", length(unique(model_panel$ticker))), config)
   model_panel
 }
+
+load_stage3_outputs <- function(config) {
+  if (!file.exists(config$files$stage3_model_panel)) stop("Stage 3 cached output not found")
+  model_panel_cached <- utils::read.csv(config$files$stage3_model_panel, stringsAsFactors = FALSE)
+  if ("date" %in% names(model_panel_cached)) model_panel_cached$date <- as.Date(model_panel_cached$date)
+  model_panel_cached
+}

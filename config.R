@@ -5,7 +5,9 @@ load_required_packages <- function(attach = TRUE) {
   pkgs <- c("quantmod", "tidyverse", "lubridate", "broom", "zoo")
   missing_pkgs <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]
   if (length(missing_pkgs) > 0) stop(paste0("Missing packages: ", paste(missing_pkgs, collapse = ", ")))
-  if (isTRUE(attach)) invisible(lapply(pkgs, library, character.only = TRUE))
+  if (isTRUE(attach)) {
+    invisible(lapply(pkgs, function(pkg) suppressPackageStartupMessages(library(pkg, character.only = TRUE))))
+  }
   invisible(pkgs)
 }
 
@@ -27,8 +29,15 @@ get_config <- function() {
     max_missing_ratio = 0.20,
     min_avg_daily_volume = 100000,
     train_ratio = 0.7,
-    max_predictors = 15,
+    max_predictors = 4,
+    stage4_k_values = c(1, 2, 3, 4),
+    stage4_ic_drop_tolerance = 0.02,
+    stage4_rmse_marginal_threshold = 0.01,
     candidate_predictors = NULL,
+    verbose_console = TRUE,
+    resume_run = TRUE,
+    run_id = NULL,
+    start_new_run = FALSE,
     refresh_download = FALSE,
     refresh_model_search = FALSE,
     stage4_progress_every = 50,
@@ -69,6 +78,7 @@ get_config <- function() {
       stage4_all_models = "results/all_models.csv",
       stage4_best_model_summary = "results/best_model_summary.txt",
       stage4_summary = "results/stage4_summary.txt",
+      stage4_model_complexity_summary = "results/stage4_model_complexity_summary.csv",
       stage4_best_predictors = "results/best_predictors.csv",
       stage4_split_info = "results/split_info.csv",
       stage4_pred_vs_actual = "results/predicted_vs_actual.csv",
