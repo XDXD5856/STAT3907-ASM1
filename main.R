@@ -1,7 +1,8 @@
 # main.R
-# Entry point for HK stock selection pipeline
+# Master entrypoint
 
 source("config.R")
+source("utils_io.R")
 source("data_loader.R")
 source("feature_engineering.R")
 source("model_search.R")
@@ -9,62 +10,55 @@ source("predict.R")
 source("report.R")
 
 main <- function() {
-  message("Starting pipeline...")
-
   config <- get_config()
+  create_output_dirs(config)
   load_required_packages(attach = TRUE)
-  initialize_project_dirs(config)
 
-  # Stage 1 + 2: Universe + data download
-  raw_panel_df <- load_and_clean_data(config)
-  utils::write.csv(raw_panel_df, config$files$raw_panel, row.names = FALSE)
+  write_master_log("Pipeline started", config)
 
-  # Save derived qualified universe snapshot from panel
-  universe_df <- unique(raw_panel_df[, c("stock_code", "company_name", "ticker")])
+  raw_panel <- NULL
+  model_panel <- NULL
+  model_result <- NULL
+  prediction <- NULL
+  report <- NULL
+
+  # Stage 1 + 2
+  write_master_log("Running Stage 1+2 (universe + raw download)", config)
+  raw_panel <- load_and_clean_data(config)
+  universe_df <- unique(raw_panel[, c("stock_code", "company_name", "ticker")])
   universe_df <- universe_df[order(universe_df$ticker), , drop = FALSE]
-  utils::write.csv(universe_df, config$files$universe, row.names = FALSE)
+  write_master_log(paste0("Stage 1+2 done: universe=", nrow(universe_df), ", raw_rows=", nrow(raw_panel)), config)
 
-  message(sprintf("Stage 1+2 complete: %d qualified stocks, %d panel rows", nrow(universe_df), nrow(raw_panel_df)))
+  # Stage 3
+  write_master_log("Running Stage 3 (feature engineering)", config)
+  model_panel <- build_features_and_target(raw_panel, config)
+  write_master_log(paste0("Stage 3 done: model_rows=", nrow(model_panel)), config)
 
-  # Stage 3: Feature engineering
-  model_panel_df <- build_features_and_target(raw_panel_df, config)
-  utils::write.csv(model_panel_df, config$files$model_panel, row.names = FALSE)
-  message(sprintf("Stage 3 complete: %d model rows", nrow(model_panel_df)))
+  # Stage 4
+  write_master_log("Running Stage 4 (model search)", config)
+  model_result <- search_best_model(model_panel, config)
+  write_master_log(paste0("Stage 4 done: best_rmse=", model_result$best_metrics$valid_rmse[1]), config)
 
-  # Stage 4: Model selection
-  model_result <- search_best_model(
-    dataset = model_panel_df,
-    config = config,
-    target_col = "target_21d",
-    candidate_predictors = config$candidate_predictors,
-    date_col = "date",
-    ticker_col = "ticker"
-  )
-  utils::write.csv(model_result$all_models, config$files$all_models, row.names = FALSE)
-  message("Stage 4 complete: best model selected")
+  # Stage 5
+  write_master_log("Running Stage 5 (prediction)", config)
+  prediction <- run_prediction(model_result, model_panel, config)
+  write_master_log(paste0("Stage 5 done: predictions=", nrow(prediction)), config)
 
-  # Stage 5: Prediction
-  prediction_result <- run_prediction(model_result, model_panel_df, config)
-  utils::write.csv(prediction_result, config$files$predictions, row.names = FALSE)
-  message(sprintf("Stage 5 complete: %d stock predictions", nrow(prediction_result)))
+  # Stage 6
+  write_master_log("Running Stage 6 (report)", config)
+  report <- generate_report(prediction, raw_panel, model_result, universe_df, config)
+  write_master_log(paste0("Stage 6 done: top_pick=", report$top_pick$ticker), config)
 
-  # Stage 6: Ranking
-  report_result <- generate_report(prediction_result, raw_panel_df, config)
-  message("Stage 6 complete: ranking and top pick generated")
-
-  message("Pipeline finished.")
+  write_master_log("Pipeline finished", config)
 
   list(
-    config = config,
     universe = universe_df,
-    raw_panel = raw_panel_df,
-    model_panel = model_panel_df,
+    raw_panel = raw_panel,
+    model_panel = model_panel,
     model_result = model_result,
-    prediction_result = prediction_result,
-    report_result = report_result
+    prediction = prediction,
+    report = report
   )
 }
 
-if (sys.nframe() == 0) {
-  main()
-}
+if (sys.nframe() == 0) main()

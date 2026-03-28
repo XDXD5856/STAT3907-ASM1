@@ -1,6 +1,5 @@
 # data_loader.R
-# Stage 1: Universe construction
-# Stage 2: Historical OHLCV download and cleaning
+# Stage 1 + Stage 2
 
 format_hkex_to_yahoo <- function(stock_code) {
   code_num <- suppressWarnings(as.integer(gsub("[^0-9]", "", as.character(stock_code))))
@@ -9,101 +8,65 @@ format_hkex_to_yahoo <- function(stock_code) {
 }
 
 get_hkex_universe <- function(config) {
-  if (is.null(config$hkex_securities_list_url)) {
-    stop("config$hkex_securities_list_url is required")
-  }
-
-  message("[Stage 1] Downloading HKEX list from: ", config$hkex_securities_list_url)
-
-  hkex_raw <- tryCatch(
+  raw_df <- tryCatch(
     utils::read.csv(config$hkex_securities_list_url, stringsAsFactors = FALSE),
-    error = function(e) {
-      stop("Failed to read HKEX securities list: ", conditionMessage(e))
-    }
+    error = function(e) stop("Failed to read HKEX list: ", conditionMessage(e))
   )
 
-  if (nrow(hkex_raw) == 0) {
-    stop("HKEX securities list is empty")
-  }
+  total_stocks <- nrow(raw_df)
+  if (total_stocks == 0) stop("HKEX list is empty")
 
-  # Standardize column names
-  raw_names <- names(hkex_raw)
-  clean_names <- tolower(gsub("[^a-z0-9]", "_", raw_names))
-  names(hkex_raw) <- clean_names
+  names(raw_df) <- tolower(gsub("[^a-z0-9]", "_", names(raw_df)))
+  pick <- function(x) { y <- intersect(x, names(raw_df)); if (length(y) == 0) NA_character_ else y[1] }
 
-  # Flexible matching for expected fields
-  pick_first <- function(candidates, pool) {
-    hit <- intersect(candidates, pool)
-    if (length(hit) == 0) NA_character_ else hit[1]
-  }
+  code_col <- pick(c("stock_code", "stockcode", "code", "stock_code_", "stock_code__"))
+  name_col <- pick(c("name_of_securities", "name", "stock_name", "company_name"))
+  cat_col <- pick(c("category", "security_type", "type"))
+  sub_col <- pick(c("sub_category", "subcategory", "sub_type", "market"))
 
-  code_col <- pick_first(c("stock_code", "stockcode", "code", "stock_code_", "stock_code__"), names(hkex_raw))
-  name_col <- pick_first(c("name_of_securities", "name", "stock_name", "company_name"), names(hkex_raw))
-  cat_col <- pick_first(c("category", "security_type", "type", "classification"), names(hkex_raw))
-  sub_cat_col <- pick_first(c("sub_category", "subcategory", "sub_type", "subclassification", "market"), names(hkex_raw))
+  if (is.na(code_col)) stop("Cannot find stock code column in HKEX list")
 
-  if (is.na(code_col)) {
-    stop("Cannot find stock code column in HKEX file")
-  }
-
-  universe <- data.frame(
-    stock_code = hkex_raw[[code_col]],
-    company_name = if (!is.na(name_col)) hkex_raw[[name_col]] else NA_character_,
-    category = if (!is.na(cat_col)) hkex_raw[[cat_col]] else NA_character_,
-    sub_category = if (!is.na(sub_cat_col)) hkex_raw[[sub_cat_col]] else NA_character_,
+  u <- data.frame(
+    stock_code = raw_df[[code_col]],
+    company_name = if (!is.na(name_col)) raw_df[[name_col]] else NA_character_,
+    category = if (!is.na(cat_col)) raw_df[[cat_col]] else NA_character_,
+    sub_category = if (!is.na(sub_col)) raw_df[[sub_col]] else NA_character_,
     stringsAsFactors = FALSE
   )
 
-  # Normalize code and ticker
-  universe$stock_code <- sprintf(
-    "%04d",
-    suppressWarnings(as.integer(gsub("[^0-9]", "", as.character(universe$stock_code))))
-  )
-  universe$ticker <- vapply(universe$stock_code, format_hkex_to_yahoo, character(1))
+  code_num <- suppressWarnings(as.integer(gsub("[^0-9]", "", as.character(u$stock_code))))
+  u$stock_code <- ifelse(is.na(code_num), NA_character_, sprintf("%04d", code_num))
+  u$ticker <- vapply(u$stock_code, format_hkex_to_yahoo, character(1))
 
-  # Common equity / ordinary stock heuristic filters
-  text_blob <- tolower(paste(universe$category, universe$sub_category, universe$company_name))
-  include_equity <- grepl("equity|ordinary|stock|share", text_blob)
-  exclude_non_equity <- !grepl("warrant|bond|etf|fund|right|cbbc|derivative|trust|debt", text_blob)
+  txt <- tolower(paste(u$category, u$sub_category, u$company_name))
+  include_equity <- grepl("equity|ordinary|stock|share", txt)
+  exclude_non_equity <- !grepl("warrant|bond|etf|fund|right|cbbc|derivative|trust|debt", txt)
 
-  # Main board heuristic if available in sub_category
-  sub_cat_text <- tolower(as.character(universe$sub_category))
-  has_subcat <- !(all(is.na(universe$sub_category)) || all(universe$sub_category == ""))
-  mainboard_ok <- if (has_subcat) grepl("main", sub_cat_text) | !grepl("gem", sub_cat_text) else rep(TRUE, nrow(universe))
+  sub_txt <- tolower(as.character(u$sub_category))
+  has_sub <- !(all(is.na(u$sub_category)) || all(u$sub_category == ""))
+  mainboard_ok <- if (has_sub) (grepl("main", sub_txt) | !grepl("gem", sub_txt)) else rep(TRUE, nrow(u))
 
-  universe <- universe[
-    !is.na(universe$stock_code) &
-      !is.na(universe$ticker) &
-      include_equity &
-      exclude_non_equity &
-      mainboard_ok,
+  u <- u[
+    !is.na(u$stock_code) & !is.na(u$ticker) & include_equity & exclude_non_equity & mainboard_ok,
     c("stock_code", "company_name", "category", "sub_category", "ticker"),
     drop = FALSE
   ]
+  u <- u[!duplicated(u$ticker), , drop = FALSE]
+  rownames(u) <- NULL
 
-  universe <- universe[!duplicated(universe$ticker), , drop = FALSE]
-  rownames(universe) <- NULL
-
-  message("[Stage 1] Qualified HKEX universe size: ", nrow(universe))
-  universe
+  attr(u, "total_hkex_stocks") <- total_stocks
+  attr(u, "qualified_stocks") <- nrow(u)
+  attr(u, "excluded_stocks") <- total_stocks - nrow(u)
+  u
 }
 
 download_single_ticker_history <- function(ticker, from, to) {
   xt <- tryCatch(
-    quantmod::getSymbols(
-      Symbols = ticker,
-      src = "yahoo",
-      from = from,
-      to = to,
-      auto.assign = FALSE,
-      warnings = FALSE
-    ),
+    quantmod::getSymbols(ticker, src = "yahoo", from = from, to = to, auto.assign = FALSE, warnings = FALSE),
     error = function(e) NULL
   )
 
-  if (is.null(xt) || NROW(xt) == 0) {
-    return(NULL)
-  }
+  if (is.null(xt) || NROW(xt) == 0) return(NULL)
 
   data.frame(
     ticker = ticker,
@@ -119,82 +82,122 @@ download_single_ticker_history <- function(ticker, from, to) {
 }
 
 load_and_clean_data <- function(config) {
+  # ---------- Stage 1 ----------
+  write_stage_log("stage1", "Stage 1 started", config)
   universe <- get_hkex_universe(config)
 
-  if (nrow(universe) == 0) {
-    stop("No qualified stocks found in HKEX universe")
-  }
+  utils::write.csv(universe, config$files$stage1_universe, row.names = FALSE)
+  summary_lines <- c(
+    sprintf("total HKEX stocks: %d", attr(universe, "total_hkex_stocks")),
+    sprintf("qualified stocks: %d", attr(universe, "qualified_stocks")),
+    sprintf("excluded stocks: %d", attr(universe, "excluded_stocks"))
+  )
+  writeLines(summary_lines, con = config$files$stage1_summary)
+  write_stage_log("stage1", paste(summary_lines, collapse = " | "), config)
+  write_stage_log("stage1", "Stage 1 completed", config)
+
+  # ---------- Stage 2 ----------
+  write_stage_log("stage2", "Stage 2 started", config)
+  stage2_dir <- config$paths$stage2
 
   panel_parts <- list()
-  total <- nrow(universe)
+  failed_rows <- list()
+  summary_rows <- list()
 
-  message("[Stage 2] Starting Yahoo download for ", total, " tickers...")
-
-  for (i in seq_len(total)) {
+  n_total <- nrow(universe)
+  for (i in seq_len(n_total)) {
+    ticker_i <- universe$ticker[i]
     stock_code_i <- universe$stock_code[i]
     company_name_i <- universe$company_name[i]
-    ticker_i <- universe$ticker[i]
 
-    if (i %% 20 == 0 || i == 1 || i == total) {
-      message(sprintf("[Stage 2] Progress: %d/%d (%s)", i, total, ticker_i))
-    }
+    msg <- paste0("Downloading: ", ticker_i, " (", i, "/", n_total, ")")
+    write_stage_log("stage2", msg, config)
 
-    hist_df <- tryCatch(
-      download_single_ticker_history(ticker = ticker_i, from = config$start_date, to = config$end_date),
+    ticker_dir <- file.path(stage2_dir, ticker_i)
+    if (!dir.exists(ticker_dir)) dir.create(ticker_dir, recursive = TRUE, showWarnings = FALSE)
+
+    df <- tryCatch(
+      download_single_ticker_history(ticker_i, config$start_date, config$end_date),
       error = function(e) NULL
     )
 
-    if (is.null(hist_df) || nrow(hist_df) == 0) {
+    if (is.null(df) || nrow(df) == 0) {
+      failed_rows[[length(failed_rows) + 1]] <- data.frame(
+        ticker = ticker_i,
+        stock_code = stock_code_i,
+        company_name = company_name_i,
+        reason = "download_failed_or_empty",
+        stringsAsFactors = FALSE
+      )
       next
     }
 
-    # basic row-level data cleaning
-    hist_df <- hist_df[
-      !is.na(hist_df$date) &
-        !is.na(hist_df$close) &
-        hist_df$close > 0 &
-        !is.na(hist_df$open) &
-        !is.na(hist_df$high) &
-        !is.na(hist_df$low) &
-        !is.na(hist_df$volume),
+    before_n <- nrow(df)
+    df <- df[
+      !is.na(df$date) & !is.na(df$close) & df$close > 0 & !is.na(df$open) & !is.na(df$high) & !is.na(df$low) & !is.na(df$volume),
       ,
       drop = FALSE
     ]
 
-    if (nrow(hist_df) < config$min_history_days) {
+    missing_ratio <- mean(!complete.cases(df[, c("open", "high", "low", "close", "volume", "adjusted_close")]))
+    avg_volume <- mean(df$volume, na.rm = TRUE)
+
+    pass_history <- nrow(df) >= config$min_history_days
+    pass_missing <- is.finite(missing_ratio) && missing_ratio <= config$max_missing_ratio
+    pass_liq <- is.finite(avg_volume) && avg_volume >= config$min_avg_daily_volume
+
+    if (!(pass_history && pass_missing && pass_liq)) {
+      failed_rows[[length(failed_rows) + 1]] <- data.frame(
+        ticker = ticker_i,
+        stock_code = stock_code_i,
+        company_name = company_name_i,
+        reason = paste0("filter_failed(history=", pass_history, ",missing=", pass_missing, ",liq=", pass_liq, ")"),
+        stringsAsFactors = FALSE
+      )
       next
     }
 
-    missing_ratio <- mean(!complete.cases(hist_df[, c("open", "high", "low", "close", "volume", "adjusted_close")]))
-    avg_volume <- mean(hist_df$volume, na.rm = TRUE)
+    df$stock_code <- stock_code_i
+    df$company_name <- company_name_i
+    df <- df[, c("ticker", "stock_code", "company_name", "date", "open", "high", "low", "close", "volume", "adjusted_close")]
 
-    if (!is.finite(missing_ratio) || missing_ratio > config$max_missing_ratio) {
-      next
-    }
+    utils::write.csv(df, file.path(ticker_dir, paste0(ticker_i, "_raw.csv")), row.names = FALSE)
 
-    if (!is.finite(avg_volume) || avg_volume < config$min_avg_daily_volume) {
-      next
-    }
+    save_stage_plot(
+      plot_expr = function() {
+        plot(df$date, df$close, type = "l", col = "steelblue", xlab = "Date", ylab = "Close", main = paste("Close -", ticker_i))
+      },
+      file_path = file.path(ticker_dir, paste0(ticker_i, "_close.png"))
+    )
 
-    hist_df$stock_code <- stock_code_i
-    hist_df$company_name <- company_name_i
-
-    hist_df <- hist_df[, c(
-      "ticker", "stock_code", "company_name", "date",
-      "open", "high", "low", "close", "volume", "adjusted_close"
-    )]
-
-    panel_parts[[length(panel_parts) + 1]] <- hist_df
+    panel_parts[[length(panel_parts) + 1]] <- df
+    summary_rows[[length(summary_rows) + 1]] <- data.frame(
+      ticker = ticker_i,
+      stock_code = stock_code_i,
+      company_name = company_name_i,
+      rows_before_clean = before_n,
+      rows_after_clean = nrow(df),
+      avg_volume = avg_volume,
+      missing_ratio = missing_ratio,
+      status = "success",
+      stringsAsFactors = FALSE
+    )
   }
 
-  if (length(panel_parts) == 0) {
-    stop("No ticker passed Yahoo download and quality filters. Relax config thresholds.")
-  }
+  if (length(panel_parts) == 0) stop("No stock passed Stage 2 download/filter process")
 
-  panel_df <- do.call(rbind, panel_parts)
-  panel_df <- panel_df[order(panel_df$ticker, panel_df$date), , drop = FALSE]
-  rownames(panel_df) <- NULL
+  raw_panel <- do.call(rbind, panel_parts)
+  raw_panel <- raw_panel[order(raw_panel$ticker, raw_panel$date), , drop = FALSE]
+  rownames(raw_panel) <- NULL
 
-  message("[Stage 2] Final panel rows: ", nrow(panel_df), " | tickers: ", length(unique(panel_df$ticker)))
-  panel_df
+  failed_df <- if (length(failed_rows) > 0) do.call(rbind, failed_rows) else data.frame()
+  download_summary <- if (length(summary_rows) > 0) do.call(rbind, summary_rows) else data.frame()
+
+  utils::write.csv(raw_panel, config$files$stage2_raw_panel, row.names = FALSE)
+  utils::write.csv(failed_df, config$files$stage2_failed, row.names = FALSE)
+  utils::write.csv(download_summary, config$files$stage2_download_summary, row.names = FALSE)
+
+  write_stage_log("stage2", paste0("Stage 2 completed: success_tickers=", length(unique(raw_panel$ticker)), ", failed=", nrow(failed_df)), config)
+
+  raw_panel
 }
