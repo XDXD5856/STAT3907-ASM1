@@ -1,21 +1,54 @@
 # predict.R
-# Stage 4 & 5: Evaluate on test set and predict next-period return by ticker.
+# Stage 5: Predict future 21-day return for latest observation of each qualified stock
 
-run_prediction <- function(model_result, dataset, config) {
-  # TODO:
-  # 1) Evaluate selected model on test period
-  # 2) Predict next 21-day return for latest row of each ticker
-  # 3) Return prediction table
+get_latest_observation_by_ticker <- function(model_panel_df) {
+  tickers <- unique(model_panel_df$ticker)
+  out <- list()
 
-  stop("run_prediction() not implemented yet.")
+  for (tk in tickers) {
+    part <- model_panel_df[model_panel_df$ticker == tk, , drop = FALSE]
+    part <- part[order(part$date), , drop = FALSE]
+    if (nrow(part) == 0) next
+    out[[length(out) + 1]] <- part[nrow(part), , drop = FALSE]
+  }
+
+  if (length(out) == 0) {
+    stop("No latest observations found for prediction.")
+  }
+
+  do.call(rbind, out)
 }
 
-evaluate_on_test <- function(model, test_df, target_col) {
-  # TODO: Compute test metrics.
-  stop("evaluate_on_test() not implemented yet.")
-}
+run_prediction <- function(model_result, model_panel_df, config) {
+  if (is.null(model_result$best_model)) {
+    stop("model_result$best_model is missing.")
+  }
 
-predict_next_period_by_ticker <- function(model, latest_feature_df) {
-  # TODO: Predict next-period return per ticker.
-  stop("predict_next_period_by_ticker() not implemented yet.")
+  latest_df <- get_latest_observation_by_ticker(model_panel_df)
+
+  predictors <- model_result$best_predictors
+  required <- unique(c("ticker", "date", predictors))
+
+  missing_cols <- setdiff(required, names(latest_df))
+  if (length(missing_cols) > 0) {
+    stop(sprintf("Missing columns for prediction: %s", paste(missing_cols, collapse = ", ")))
+  }
+
+  pred_ready <- latest_df[complete.cases(latest_df[, predictors, drop = FALSE]), , drop = FALSE]
+  if (nrow(pred_ready) == 0) {
+    stop("No valid latest rows remain after predictor complete.cases filter.")
+  }
+
+  pred <- as.numeric(predict(model_result$best_model, newdata = pred_ready))
+
+  out <- data.frame(
+    ticker = pred_ready$ticker,
+    prediction_date = pred_ready$date,
+    predicted_return_21d = pred,
+    stringsAsFactors = FALSE
+  )
+
+  out <- out[order(out$ticker), , drop = FALSE]
+  rownames(out) <- NULL
+  out
 }

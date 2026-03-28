@@ -1,5 +1,5 @@
 # config.R
-# Central configuration for paths, dates, tickers, and model settings.
+# Central configuration for the HK stock selection pipeline.
 
 load_required_packages <- function(attach = TRUE) {
   pkgs <- c("quantmod", "tidyverse", "lubridate", "broom")
@@ -19,26 +19,36 @@ load_required_packages <- function(attach = TRUE) {
     invisible(lapply(pkgs, library, character.only = TRUE))
   }
 
-load_required_packages <- function() {
-  pkgs <- c("quantmod", "tidyverse", "lubridate", "broom")
-  # Skeleton only: package checks/loading can be expanded later.
   invisible(pkgs)
 }
 
 get_config <- function() {
   list(
-    market = "HK",
-    tickers = c(
-      # e.g. "0005.HK", "0700.HK"
-    ),
+    investment_hkd = 1000000,
+    # HKEX official securities list endpoint (can be changed if HKEX updates URL)
+    hkex_securities_list_url = "https://www.hkex.com.hk/eng/services/trading/securities/securitieslists/ListOfSecurities.csv",
     start_date = as.Date("2015-01-01"),
     end_date = Sys.Date(),
-    forecast_horizon = 21,
+    target_horizon = 21,
+    min_history_days = 252 * 3,
+    max_missing_ratio = 0.2,
+    min_avg_daily_volume = 100000,
     train_ratio = 0.7,
+    max_predictors = 15,
+    candidate_predictors = NULL,
     paths = list(
       raw_data = "data/raw",
       processed_data = "data/processed",
       output = "data/output"
+    ),
+    files = list(
+      universe = "data/output/universe_qualified.csv",
+      raw_panel = "data/raw/raw_panel.csv",
+      model_panel = "data/processed/model_panel.csv",
+      all_models = "data/output/all_models.csv",
+      predictions = "data/output/predictions_latest.csv",
+      ranking = "data/output/ranked_stocks.csv",
+      top_pick = "data/output/top_pick.csv"
     )
   )
 }
