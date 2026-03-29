@@ -86,6 +86,7 @@ get_config <- function() {
       stage4_model_complexity_summary = "results/stage4_model_complexity_summary.csv",
       stage4_best_predictors = "results/best_predictors.csv",
       stage4_split_info = "results/split_info.csv",
+      stage4_backtest = "results/backtest_pred_vs_actual.csv",
       stage4_pred_vs_actual = "results/predicted_vs_actual.csv",
       stage4_plot_rmse = "results/rmse_by_model_rank.png",
       stage4_plot_top20 = "results/top20_models_bar.png",

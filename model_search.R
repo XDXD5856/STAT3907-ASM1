@@ -207,6 +207,10 @@ search_best_model <- function(dataset, config, target_col = "target_21d", candid
   va_best <- valid_df[complete.cases(valid_df[, c(target_col, bp), drop = FALSE]), c(target_col, bp), drop = FALSE]
   pred <- as.numeric(predict(best_model_fit, newdata = va_best))
   pva <- data.frame(actual = va_best[[target_col]], predicted = pred)
+  test_best <- test_df[complete.cases(test_df[, c(target_col, bp), drop = FALSE]), c(target_col, bp), drop = FALSE]
+  test_pred <- if (nrow(test_best) > 0) as.numeric(predict(best_model_fit, newdata = test_best)) else numeric(0)
+  backtest_pva <- data.frame(actual = test_best[[target_col]], predicted = test_pred)
+  backtest_sc <- if (nrow(test_best) > 1) score_model(best_model_fit, test_best, target_col, compute_ic) else list(rmse = NA_real_, ic = NA_real_)
 
   safe_write_csv(all_models, config$files$stage4_all_models)
   safe_write_csv(data.frame(predictor = bp), config$files$stage4_best_predictors)
@@ -394,7 +398,7 @@ generate_time_series_split <- function(df, train_ratio = 0.7, date_col = "date",
     }
     test_parts[[length(test_parts) + 1]] <- d[(n_train + 1):n, , drop = FALSE]
   }
-  list(train = do.call(rbind, train_parts), test = do.call(rbind, test_parts))
+  list(train = do.call(rbind, train_parts), valid = do.call(rbind, valid_parts), test = do.call(rbind, test_parts))
 }
 
 fit_ols_model <- function(train_df, formula_obj) lm(formula_obj, data = train_df)
