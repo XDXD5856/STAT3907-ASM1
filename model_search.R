@@ -43,8 +43,8 @@ search_best_model <- function(dataset, config, target_col = "target_log10_return
     va <- valid_df[complete.cases(valid_df[, c(target_col, fixed_preds), drop = FALSE]), c(target_col, fixed_preds), drop = FALSE]
     te <- test_df[complete.cases(test_df[, c(target_col, fixed_preds), drop = FALSE]), c(target_col, fixed_preds), drop = FALSE]
     fit <- fit_ols_model(tr, fm)
-    sc <- if (nrow(va) > 1) score_model(fit, va, target_col, compute_ic, pred_sign = pred_sign) else list(rmse = NA_real_, ic = NA_real_)
-    bt <- if (nrow(te) > 1) score_model(fit, te, target_col, compute_ic, pred_sign = pred_sign) else list(rmse = NA_real_, ic = NA_real_)
+    sc <- if (nrow(va) > 1) score_model(fit, va, target_col, compute_ic) else list(rmse = NA_real_, ic = NA_real_)
+    bt <- if (nrow(te) > 1) score_model(fit, te, target_col, compute_ic) else list(rmse = NA_real_, ic = NA_real_)
     all_models <- data.frame(
       model_id = 1L,
       predictors = paste(fixed_preds, collapse = ", "),
@@ -58,8 +58,8 @@ search_best_model <- function(dataset, config, target_col = "target_log10_return
       ic = sc$ic,
       stringsAsFactors = FALSE
     )
-    pva <- if (nrow(va) > 0) data.frame(actual = va[[target_col]], predicted = pred_sign * as.numeric(predict(fit, newdata = va))) else data.frame(actual = numeric(0), predicted = numeric(0))
-    bt_pva <- if (nrow(te) > 0) data.frame(actual = te[[target_col]], predicted = pred_sign * as.numeric(predict(fit, newdata = te))) else data.frame(actual = numeric(0), predicted = numeric(0))
+    pva <- if (nrow(va) > 0) data.frame(actual = va[[target_col]], predicted = as.numeric(predict(fit, newdata = va))) else data.frame(actual = numeric(0), predicted = numeric(0))
+    bt_pva <- if (nrow(te) > 0) data.frame(actual = te[[target_col]], predicted = as.numeric(predict(fit, newdata = te))) else data.frame(actual = numeric(0), predicted = numeric(0))
     complexity_summary <- data.frame(k = length(fixed_preds), best_rmse = sc$rmse, best_ic = sc$ic, model_count = 1L)
     safe_write_csv(all_models, config$files$stage4_all_models)
     safe_write_csv(complexity_summary, config$files$stage4_model_complexity_summary)
@@ -85,16 +85,16 @@ search_best_model <- function(dataset, config, target_col = "target_log10_return
     fit <- fit_ols_model(tr, fm)
 
     va_best <- valid_df[complete.cases(valid_df[, c(target_col, bp), drop = FALSE]), c(target_col, bp), drop = FALSE]
-    pred <- pred_sign * as.numeric(predict(fit, newdata = va_best))
+    pred <- as.numeric(predict(fit, newdata = va_best))
     pva <- data.frame(actual = va_best[[target_col]], predicted = pred)
     if (nrow(pva) > 0) safe_write_csv(pva, config$files$stage4_pred_vs_actual)
 
     write_stage4_runtime_summary(config, stage4_start, Sys.time(), nrow(cached_models), cached_models$valid_rmse[1], skipped = TRUE, filtered_count = NA_integer_, total_combinations = NA_integer_)
     test_best <- test_df[complete.cases(test_df[, c(target_col, bp), drop = FALSE]), c(target_col, bp), drop = FALSE]
-    bt_pred <- if (nrow(test_best) > 0) pred_sign * as.numeric(predict(fit, newdata = test_best)) else numeric(0)
+    bt_pred <- if (nrow(test_best) > 0) as.numeric(predict(fit, newdata = test_best)) else numeric(0)
     bt_pva <- data.frame(actual = test_best[[target_col]], predicted = bt_pred)
     if (nrow(bt_pva) > 0) safe_write_csv(bt_pva, config$files$stage4_backtest)
-    bt_sc <- if (nrow(test_best) > 1) score_model(fit, test_best, target_col, compute_ic, pred_sign = pred_sign) else list(rmse = NA_real_, ic = NA_real_)
+    bt_sc <- if (nrow(test_best) > 1) score_model(fit, test_best, target_col, compute_ic) else list(rmse = NA_real_, ic = NA_real_)
     coef_path <- file.path(dirname(config$files$stage4_best_model_summary), "model_coefficients.csv")
     safe_write_csv(data.frame(term = rownames(summary(fit)$coefficients), summary(fit)$coefficients, row.names = NULL, check.names = FALSE), coef_path)
     return(list(best_model = fit, best_formula = fm, best_predictors = bp, best_metrics = cached_models[1, , drop = FALSE], backtest_metrics = data.frame(test_rmse = bt_sc$rmse, test_ic = bt_sc$ic), all_models = cached_models, complexity_summary = if (file.exists(config$files$stage4_model_complexity_summary)) utils::read.csv(config$files$stage4_model_complexity_summary, stringsAsFactors = FALSE) else data.frame(), selected_k = length(bp), split_info = list(train_n = nrow(train_df), valid_n = nrow(valid_df), test_n = nrow(test_df), train_ratio = config$train_ratio, valid_ratio = config$valid_ratio)))
@@ -152,7 +152,7 @@ search_best_model <- function(dataset, config, target_col = "target_log10_return
         fit <- tryCatch(fit_ols_model(tr, fm), error = function(e) NULL)
         if (is.null(fit)) next
 
-        sc <- score_model(fit, va, target_col, compute_ic, pred_sign = pred_sign)
+        sc <- score_model(fit, va, target_col, compute_ic)
         if (!is.finite(sc$rmse)) next
         s <- summary(fit)
         rmse_val <- sc$rmse
@@ -253,12 +253,12 @@ search_best_model <- function(dataset, config, target_col = "target_log10_return
   tr_best <- train_df[complete.cases(train_df[, c(target_col, bp), drop = FALSE]), c(target_col, bp), drop = FALSE]
   best_model_fit <- fit_ols_model(tr_best, best_formula)
   va_best <- valid_df[complete.cases(valid_df[, c(target_col, bp), drop = FALSE]), c(target_col, bp), drop = FALSE]
-  pred <- pred_sign * as.numeric(predict(best_model_fit, newdata = va_best))
+  pred <- as.numeric(predict(best_model_fit, newdata = va_best))
   pva <- data.frame(actual = va_best[[target_col]], predicted = pred)
   test_best <- test_df[complete.cases(test_df[, c(target_col, bp), drop = FALSE]), c(target_col, bp), drop = FALSE]
-  test_pred <- if (nrow(test_best) > 0) pred_sign * as.numeric(predict(best_model_fit, newdata = test_best)) else numeric(0)
+  test_pred <- if (nrow(test_best) > 0) as.numeric(predict(best_model_fit, newdata = test_best)) else numeric(0)
   backtest_pva <- data.frame(actual = test_best[[target_col]], predicted = test_pred)
-  backtest_sc <- if (nrow(test_best) > 1) score_model(best_model_fit, test_best, target_col, compute_ic, pred_sign = pred_sign) else list(rmse = NA_real_, ic = NA_real_)
+  backtest_sc <- if (nrow(test_best) > 1) score_model(best_model_fit, test_best, target_col, compute_ic) else list(rmse = NA_real_, ic = NA_real_)
 
   safe_write_csv(all_models, config$files$stage4_all_models)
   safe_write_csv(data.frame(predictor = bp), config$files$stage4_best_predictors)

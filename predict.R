@@ -19,8 +19,7 @@ run_prediction <- function(model_result, model_panel_df, config) {
   preds <- model_result$best_predictors
   ready <- latest[complete.cases(latest[, preds, drop = FALSE]), , drop = FALSE]
 
-  pred_sign <- if (isTRUE(config$invert_prediction_sign)) -1 else 1
-  pred <- pred_sign * as.numeric(predict(model_result$best_model, newdata = ready))
+  pred <- as.numeric(predict(model_result$best_model, newdata = ready))
   company_name <- if ("company_name" %in% names(ready)) ready$company_name else ready$ticker
   volatility_col <- if ("volatility_21" %in% names(ready)) ready$volatility_21 else rep(NA_real_, nrow(ready))
   out <- data.frame(

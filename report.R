@@ -44,8 +44,7 @@ run_assignment_backtest <- function(model_panel_df, model_result, config, target
     sc <- score[complete.cases(score[, preds, drop = FALSE]), , drop = FALSE]
     if (nrow(tr) < (length(preds) + 5) || nrow(sc) == 0) next
     fit <- lm(as.formula(paste(target_col, "~", paste(preds, collapse = " + "))), data = tr)
-    pred_sign <- if (isTRUE(config$invert_prediction_sign)) -1 else 1
-    sc$pred <- pred_sign * as.numeric(predict(fit, newdata = sc))
+    sc$pred <- as.numeric(predict(fit, newdata = sc))
     sc <- sc[order(-sc$pred), , drop = FALSE]
     top <- sc[1, , drop = FALSE]
     out[[length(out) + 1]] <- data.frame(
