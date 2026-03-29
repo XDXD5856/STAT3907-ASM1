@@ -34,6 +34,43 @@ search_best_model <- function(dataset, config, target_col = "target_log10_return
   )
   train_df <- split$train; valid_df <- split$valid; test_df <- split$test
 
+  if (isTRUE(config$stage4_use_fixed_model)) {
+    fixed_preds <- intersect(config$stage4_fixed_predictors, names(dataset))
+    if (length(fixed_preds) == 0) stop("stage4_use_fixed_model=TRUE but no fixed predictors found in dataset")
+    fm <- as.formula(paste(target_col, "~", paste(fixed_preds, collapse = " + ")))
+    tr <- train_df[complete.cases(train_df[, c(target_col, fixed_preds), drop = FALSE]), c(target_col, fixed_preds), drop = FALSE]
+    va <- valid_df[complete.cases(valid_df[, c(target_col, fixed_preds), drop = FALSE]), c(target_col, fixed_preds), drop = FALSE]
+    te <- test_df[complete.cases(test_df[, c(target_col, fixed_preds), drop = FALSE]), c(target_col, fixed_preds), drop = FALSE]
+    fit <- fit_ols_model(tr, fm)
+    sc <- if (nrow(va) > 1) score_model(fit, va, target_col, compute_ic) else list(rmse = NA_real_, ic = NA_real_)
+    bt <- if (nrow(te) > 1) score_model(fit, te, target_col, compute_ic) else list(rmse = NA_real_, ic = NA_real_)
+    all_models <- data.frame(
+      model_id = 1L,
+      predictors = paste(fixed_preds, collapse = ", "),
+      n_predictors = length(fixed_preds),
+      n_train = nrow(tr),
+      n_valid = nrow(va),
+      adj_r_squared = unname(summary(fit)$adj.r.squared),
+      aic = AIC(fit),
+      bic = BIC(fit),
+      valid_rmse = sc$rmse,
+      ic = sc$ic,
+      stringsAsFactors = FALSE
+    )
+    pva <- if (nrow(va) > 0) data.frame(actual = va[[target_col]], predicted = as.numeric(predict(fit, newdata = va))) else data.frame(actual = numeric(0), predicted = numeric(0))
+    bt_pva <- if (nrow(te) > 0) data.frame(actual = te[[target_col]], predicted = as.numeric(predict(fit, newdata = te))) else data.frame(actual = numeric(0), predicted = numeric(0))
+    complexity_summary <- data.frame(k = length(fixed_preds), best_rmse = sc$rmse, best_ic = sc$ic, model_count = 1L)
+    safe_write_csv(all_models, config$files$stage4_all_models)
+    safe_write_csv(complexity_summary, config$files$stage4_model_complexity_summary)
+    safe_write_csv(data.frame(predictor = fixed_preds), config$files$stage4_best_predictors)
+    safe_write_csv(data.frame(train_n = nrow(train_df), valid_n = nrow(valid_df), test_n = nrow(test_df), train_ratio = config$train_ratio, valid_ratio = config$valid_ratio), config$files$stage4_split_info)
+    safe_write_csv(pva, config$files$stage4_pred_vs_actual)
+    safe_write_csv(bt_pva, config$files$stage4_backtest)
+    safe_write_lines(c(paste0("selected_k: ", length(fixed_preds)), "selection_reason: fixed reference model", paste0("best_formula: ", deparse(fm)), paste0("best_rmse: ", sc$rmse), paste0("best_ic: ", sc$ic), paste0("backtest_rmse: ", bt$rmse), paste0("backtest_ic: ", bt$ic)), config$files$stage4_best_model_summary)
+    write_stage_log("stage4", paste0("Using fixed reference model with predictors: ", paste(fixed_preds, collapse = ", ")), config)
+    return(list(best_model = fit, best_formula = fm, best_predictors = fixed_preds, best_metrics = all_models[1, , drop = FALSE], backtest_metrics = data.frame(test_rmse = bt$rmse, test_ic = bt$ic), all_models = all_models, complexity_summary = complexity_summary, selected_k = length(fixed_preds), split_info = list(train_n = nrow(train_df), valid_n = nrow(valid_df), test_n = nrow(test_df), train_ratio = config$train_ratio, valid_ratio = config$valid_ratio)))
+  }
+
   if (!isTRUE(config$refresh_model_search) && file.exists(config$files$stage4_all_models) && file.exists(config$files$stage4_best_predictors)) {
     write_stage_log("stage4", "refresh_model_search=FALSE and all_models.csv exists; skipping exhaustive rerun", config)
     cached_models <- utils::read.csv(config$files$stage4_all_models, stringsAsFactors = FALSE)

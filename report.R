@@ -6,7 +6,7 @@ rank_stocks <- function(prediction_df) {
   if (!"company_name" %in% names(r)) r$company_name <- r$ticker
   if (!"volatility_21" %in% names(r)) r$volatility_21 <- NA_real_
   r$risk_adjusted_score <- r$predicted_return_21d / (r$volatility_21 + 1e-6)
-  r <- r[order(-r$risk_adjusted_score), , drop = FALSE]
+  r <- r[order(-r$predicted_return_21d), , drop = FALSE]
   r$rank <- seq_len(nrow(r))
   r[, c("rank", "ticker", "stock_code", "company_name", "predicted_return_21d", "volatility_21", "risk_adjusted_score"), drop = FALSE]
 }
@@ -129,14 +129,6 @@ generate_report <- function(prediction_result, raw_panel_df, model_result, unive
 
   write_stage_log("stage6", paste0("Stage 6 completed: top_pick=", top_pick$ticker), config)
   list(ranked = ranked, top_pick = top_pick, backtest = bt)
-}
-
-load_stage6_outputs <- function(config) {
-  if (!file.exists(config$files$stage6_ranked) || !file.exists(config$files$stage6_top_pick)) stop("Stage 6 cached outputs not found")
-  list(
-    ranked = utils::read.csv(config$files$stage6_ranked, stringsAsFactors = FALSE),
-    top_pick = utils::read.csv(config$files$stage6_top_pick, stringsAsFactors = FALSE)
-  )
 }
 
 load_stage6_outputs <- function(config) {
