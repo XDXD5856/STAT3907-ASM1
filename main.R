@@ -74,7 +74,7 @@ main <- function() {
     write_master_log(paste0("Stage 6 done: reused existing top_pick=", report$top_pick$ticker[1]), config)
   } else {
     write_master_log("Running Stage 6", config)
-    report <- generate_report(prediction, raw_panel, model_result, universe_df, config)
+    report <- generate_report(prediction, raw_panel, model_result, universe_df, model_panel, config)
     mark_stage_done("stage6", config)
     write_run_manifest(config)
     write_master_log(paste0("Stage 6 done: top_pick=", report$top_pick$ticker), config)

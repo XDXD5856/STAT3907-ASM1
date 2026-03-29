@@ -166,6 +166,9 @@ apply_run_paths <- function(config, run_id) {
     stage6_top_pick = file.path(run_report, "top_pick.csv"),
     stage6_final_report = file.path(run_report, "final_report.txt"),
     stage6_cumlog10_plot = file.path(run_report, "cumulative_log10_return.png"),
+    stage6_monthly_return_plot = file.path(run_report, "monthly_return.png"),
+    stage6_backtest_results = file.path(run_report, "backtest_results.csv"),
+    stage6_backtest_summary = file.path(run_report, "backtest_summary.csv"),
     submission_ranked = file.path(run_submission, "ranked_stocks.csv"),
     submission_top_pick = file.path(run_submission, "top_pick.csv"),
     submission_report = file.path(run_submission, "final_report.txt")

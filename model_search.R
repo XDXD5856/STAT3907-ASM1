@@ -1,7 +1,7 @@
 # model_search.R
 # Stage 4
 
-search_best_model <- function(dataset, config, target_col = "target_21d", candidate_predictors = NULL, date_col = "date", ticker_col = "ticker", min_predictors = 1, max_predictors = NULL, compute_ic = TRUE) {
+search_best_model <- function(dataset, config, target_col = "target_log10_return", candidate_predictors = NULL, date_col = "signal_date", ticker_col = "ticker", min_predictors = 1, max_predictors = NULL, compute_ic = TRUE) {
   stage4_start <- Sys.time()
   write_stage_log("stage4", "Stage 4 started", config)
   write_stage_log("stage4", "Stage 4 note: exhaustive base R lm() search is CPU-based by design", config)
@@ -85,7 +85,7 @@ search_best_model <- function(dataset, config, target_col = "target_21d", candid
       combo_counter <- combo_counter + 1L
       combos_tested_k <- combos_tested_k + 1L
       preds <- combos[[i]]
-      if (!is_valid_feature_group_combo(preds, feature_map, required_groups, max_per_group = 3L)) {
+      if (!is_valid_feature_group_combo(preds, feature_map, required_groups, max_per_group = as.integer(config$stage4_max_per_group))) {
         filtered_counter <- filtered_counter + 1L
         combos_filtered_k <- combos_filtered_k + 1L
         next
@@ -197,13 +197,13 @@ search_best_model <- function(dataset, config, target_col = "target_21d", candid
   write_stage_log("stage4", paste0("Selected predictor count k=", selected_k, " reason: ", k_choice$reason), config)
 
   all_models <- utils::read.csv(config$files$stage4_all_models_partial, stringsAsFactors = FALSE)
-  all_models <- all_models[order(all_models$valid_rmse, -all_models$ic), , drop = FALSE]
+  all_models <- all_models[order(-all_models$ic, all_models$valid_rmse), , drop = FALSE]
   best_candidates <- all_models[all_models$n_predictors == selected_k, , drop = FALSE]
   if (nrow(best_candidates) == 0) {
     write_stage_log("stage4", paste0("No valid model found for selected k=", selected_k, "; falling back to global best"), config)
     best_candidates <- all_models
   }
-  best_candidates <- best_candidates[order(best_candidates$valid_rmse, -best_candidates$ic), , drop = FALSE]
+  best_candidates <- best_candidates[order(-best_candidates$ic, best_candidates$valid_rmse), , drop = FALSE]
 
   best_row <- best_candidates[1, , drop = FALSE]
   bp <- strsplit(as.character(best_row$predictors[1]), ",\\s*")[[1]]
@@ -236,7 +236,7 @@ search_best_model <- function(dataset, config, target_col = "target_21d", candid
   list(best_model = best_model_fit, best_formula = best_formula, best_predictors = bp, best_metrics = best_candidates[1, , drop = FALSE], backtest_metrics = data.frame(test_rmse = backtest_sc$rmse, test_ic = backtest_sc$ic), all_models = all_models, complexity_summary = complexity_summary, selected_k = selected_k, split_info = list(train_n = nrow(train_df), valid_n = nrow(valid_df), test_n = nrow(test_df), train_ratio = config$train_ratio, valid_ratio = config$valid_ratio))
 }
 
-load_stage4_result <- function(dataset, config, target_col = "target_21d", date_col = "date", ticker_col = "ticker") {
+load_stage4_result <- function(dataset, config, target_col = "target_log10_return", date_col = "signal_date", ticker_col = "ticker") {
   if (!file.exists(config$files$stage4_all_models) || !file.exists(config$files$stage4_best_predictors)) {
     stop("Cannot load Stage 4 result: cached files are missing")
   }
@@ -307,38 +307,38 @@ choose_optimal_k <- function(complexity_summary, config) {
   valid <- complexity_summary[!is.na(complexity_summary$best_rmse) & complexity_summary$model_count > 0, , drop = FALSE]
   if (nrow(valid) == 0) return(list(k = complexity_summary$k[1], reason = "Fallback: no valid per-k models"))
 
-  best_row <- valid[order(valid$best_rmse, -valid$best_ic, valid$k), ][1, , drop = FALSE]
+  best_row <- valid[order(-valid$best_ic, valid$best_rmse, valid$k), ][1, , drop = FALSE]
   rmse_margin <- as.numeric(config$stage4_rmse_marginal_threshold)
   ic_tol <- as.numeric(config$stage4_ic_drop_tolerance)
 
   rmse_cutoff <- as.numeric(best_row$best_rmse) * (1 + rmse_margin)
   ic_floor <- as.numeric(best_row$best_ic) - ic_tol
-  candidates <- valid[valid$best_rmse <= rmse_cutoff & (is.na(valid$best_ic) | is.na(ic_floor) | valid$best_ic >= ic_floor), , drop = FALSE]
+  candidates <- valid[(is.na(valid$best_ic) | is.na(ic_floor) | valid$best_ic >= ic_floor) & valid$best_rmse <= rmse_cutoff, , drop = FALSE]
   if (nrow(candidates) == 0) {
-    return(list(k = best_row$k[1], reason = "Selected global RMSE winner (no low-complexity candidate met IC/RMSE thresholds)"))
+    return(list(k = best_row$k[1], reason = "Selected global IC winner (no simpler candidate met IC/RMSE thresholds)"))
   }
 
-  chosen <- candidates[order(candidates$k, candidates$best_rmse, -candidates$best_ic), ][1, , drop = FALSE]
+  chosen <- candidates[order(candidates$k, -candidates$best_ic, candidates$best_rmse), ][1, , drop = FALSE]
   if (chosen$k[1] == best_row$k[1]) {
-    list(k = chosen$k[1], reason = "Selected by lowest RMSE")
+    list(k = chosen$k[1], reason = "Selected by highest IC")
   } else {
-    list(k = chosen$k[1], reason = paste0("Selected smaller k with marginal RMSE loss (<= ", rmse_margin, ") and acceptable IC drop (<= ", ic_tol, ")"))
+    list(k = chosen$k[1], reason = paste0("Selected smaller k with acceptable IC drop (<= ", ic_tol, ") and marginal RMSE loss (<= ", rmse_margin, ")"))
   }
 }
 
 get_feature_group_map <- function(config, available_predictors) {
   default_feature_map <- c(
-    ret_1d = "close",
-    ret_5d = "close",
-    ret_10d = "close",
-    ret_21d_past = "close",
-    ln_close = "close",
-    vol_chg_1d = "volume",
-    price_range = "high_low_close",
-    oc_return = "open_close",
-    ma_ratio_5_21 = "close",
-    volatility_21 = "close",
-    volume_z_21 = "volume",
+    mom_1m = "momentum",
+    mom_3m = "momentum",
+    mom_6m = "momentum",
+    mom_12m_1m = "momentum",
+    reversal_1w = "mean_reversion",
+    vol_1m = "volatility",
+    drawdown_3m = "price_structure",
+    beta_3m = "price_structure",
+    volume_trend_1m = "volume",
+    liquidity_proxy = "volume",
+    rel_strength_3m = "price_structure",
     time_index = "time_index"
   )
   map_from_config <- config$feature_map

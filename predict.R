@@ -3,9 +3,10 @@
 
 get_latest_observation_by_ticker <- function(model_panel_df) {
   out <- list()
+  date_col <- if ("signal_date" %in% names(model_panel_df)) "signal_date" else "date"
   for (tk in unique(model_panel_df$ticker)) {
     d <- model_panel_df[model_panel_df$ticker == tk, , drop = FALSE]
-    d <- d[order(d$date), , drop = FALSE]
+    d <- d[order(d[[date_col]]), , drop = FALSE]
     if (nrow(d) > 0) out[[length(out) + 1]] <- d[nrow(d), , drop = FALSE]
   }
   do.call(rbind, out)
@@ -25,7 +26,7 @@ run_prediction <- function(model_result, model_panel_df, config) {
     ticker = ready$ticker,
     stock_code = ready$stock_code,
     company_name = company_name,
-    prediction_date = ready$date,
+    prediction_date = if ("signal_date" %in% names(ready)) ready$signal_date else ready$date,
     predicted_return_21d = pred,
     volatility_21 = volatility_col,
     stringsAsFactors = FALSE
