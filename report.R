@@ -138,3 +138,11 @@ load_stage6_outputs <- function(config) {
     top_pick = utils::read.csv(config$files$stage6_top_pick, stringsAsFactors = FALSE)
   )
 }
+
+load_stage6_outputs <- function(config) {
+  if (!file.exists(config$files$stage6_ranked) || !file.exists(config$files$stage6_top_pick)) stop("Stage 6 cached outputs not found")
+  list(
+    ranked = utils::read.csv(config$files$stage6_ranked, stringsAsFactors = FALSE),
+    top_pick = utils::read.csv(config$files$stage6_top_pick, stringsAsFactors = FALSE)
+  )
+}
