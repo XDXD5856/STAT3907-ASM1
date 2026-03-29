@@ -47,13 +47,13 @@ main <- function() {
   if (isTRUE(config$resume_run) && is_stage_done("stage4", config) && file.exists(config$files$stage4_all_models) && file.exists(config$files$stage4_best_predictors)) {
     write_master_log("Running Stage 4", config)
     model_result <- load_stage4_result(model_panel, config)
-    write_master_log(paste0("Stage 4 done: reused existing best_rmse=", model_result$best_metrics$valid_rmse[1], ", k=", model_result$selected_k), config)
+    write_master_log(paste0("Stage 4 done: reused existing best_rmse=", model_result$best_metrics$valid_rmse[1], ", test_rmse=", model_result$backtest_metrics$test_rmse[1], ", k=", model_result$selected_k), config)
   } else {
     write_master_log("Running Stage 4", config)
     model_result <- search_best_model(model_panel, config)
     mark_stage_done("stage4", config)
     write_run_manifest(config)
-    write_master_log(paste0("Stage 4 done: best_rmse=", model_result$best_metrics$valid_rmse[1], ", k=", model_result$selected_k), config)
+    write_master_log(paste0("Stage 4 done: best_rmse=", model_result$best_metrics$valid_rmse[1], ", test_rmse=", model_result$backtest_metrics$test_rmse[1], ", k=", model_result$selected_k), config)
   }
 
   if (isTRUE(config$resume_run) && is_stage_done("stage5", config) && file.exists(config$files$stage5_predictions)) {

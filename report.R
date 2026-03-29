@@ -43,6 +43,21 @@ generate_report <- function(prediction_result, raw_panel_df, model_result, unive
   safe_write_csv(top_pick, config$files$stage6_top_pick)
 
   top10 <- head(ranked, 10)
+  ret_base <- pmax(1 + ranked$predicted_return_21d, 1e-8)
+  ranked$cumulative_log10_return <- cumsum(log10(ret_base))
+  save_stage_plot(
+    function() plot(
+      ranked$rank,
+      ranked$cumulative_log10_return,
+      type = "l",
+      lwd = 2,
+      col = "steelblue",
+      xlab = "Rank",
+      ylab = "Cumulative log10 return",
+      main = "Cumulative log10 return by ranked stocks"
+    ),
+    config$files$stage6_cumlog10_plot
+  )
   lines <- c(
     "HK Stock Selection Final Report",
     paste0("total qualified stocks: ", nrow(universe_df)),

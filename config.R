@@ -29,6 +29,7 @@ get_config <- function() {
     max_missing_ratio = 0.20,
     min_avg_daily_volume = 100000,
     train_ratio = 0.7,
+    valid_ratio = 0.15,
     max_predictors = 4,
     stage4_k_values = c(1, 2, 3, 4),
     stage4_ic_drop_tolerance = 0.02,
@@ -101,6 +102,7 @@ get_config <- function() {
       stage6_ranked = "report/ranked_stocks.csv",
       stage6_top_pick = "report/top_pick.csv",
       stage6_final_report = "report/final_report.txt",
+      stage6_cumlog10_plot = "report/cumulative_log10_return.png",
       submission_ranked = "submission/ranked_stocks.csv",
       submission_top_pick = "submission/top_pick.csv",
       submission_report = "submission/final_report.txt"

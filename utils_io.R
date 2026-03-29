@@ -150,6 +150,7 @@ apply_run_paths <- function(config, run_id) {
     stage4_model_complexity_summary = file.path(run_results, "stage4_model_complexity_summary.csv"),
     stage4_best_predictors = file.path(run_results, "best_predictors.csv"),
     stage4_split_info = file.path(run_results, "split_info.csv"),
+    stage4_backtest = file.path(run_results, "backtest_pred_vs_actual.csv"),
     stage4_pred_vs_actual = file.path(run_results, "predicted_vs_actual.csv"),
     stage4_plot_rmse = file.path(run_results, "rmse_by_model_rank.png"),
     stage4_plot_top20 = file.path(run_results, "top20_models_bar.png"),
@@ -164,6 +165,7 @@ apply_run_paths <- function(config, run_id) {
     stage6_ranked = file.path(run_report, "ranked_stocks.csv"),
     stage6_top_pick = file.path(run_report, "top_pick.csv"),
     stage6_final_report = file.path(run_report, "final_report.txt"),
+    stage6_cumlog10_plot = file.path(run_report, "cumulative_log10_return.png"),
     submission_ranked = file.path(run_submission, "ranked_stocks.csv"),
     submission_top_pick = file.path(run_submission, "top_pick.csv"),
     submission_report = file.path(run_submission, "final_report.txt")
