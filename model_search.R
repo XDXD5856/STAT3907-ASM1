@@ -67,6 +67,8 @@ search_best_model <- function(dataset, config, target_col = "target_log10_return
     safe_write_csv(data.frame(train_n = nrow(train_df), valid_n = nrow(valid_df), test_n = nrow(test_df), train_ratio = config$train_ratio, valid_ratio = config$valid_ratio), config$files$stage4_split_info)
     safe_write_csv(pva, config$files$stage4_pred_vs_actual)
     safe_write_csv(bt_pva, config$files$stage4_backtest)
+    coef_path <- file.path(dirname(config$files$stage4_best_model_summary), "model_coefficients.csv")
+    safe_write_csv(data.frame(term = rownames(summary(fit)$coefficients), summary(fit)$coefficients, row.names = NULL, check.names = FALSE), coef_path)
     safe_write_lines(c(paste0("selected_k: ", length(fixed_preds)), "selection_reason: fixed reference model", paste0("best_formula: ", deparse(fm)), paste0("best_rmse: ", sc$rmse), paste0("best_ic: ", sc$ic), paste0("backtest_rmse: ", bt$rmse), paste0("backtest_ic: ", bt$ic)), config$files$stage4_best_model_summary)
     write_stage_log("stage4", paste0("Using fixed reference model with predictors: ", paste(fixed_preds, collapse = ", ")), config)
     return(list(best_model = fit, best_formula = fm, best_predictors = fixed_preds, best_metrics = all_models[1, , drop = FALSE], backtest_metrics = data.frame(test_rmse = bt$rmse, test_ic = bt$ic), all_models = all_models, complexity_summary = complexity_summary, selected_k = length(fixed_preds), split_info = list(train_n = nrow(train_df), valid_n = nrow(valid_df), test_n = nrow(test_df), train_ratio = config$train_ratio, valid_ratio = config$valid_ratio)))
@@ -93,6 +95,8 @@ search_best_model <- function(dataset, config, target_col = "target_log10_return
     bt_pva <- data.frame(actual = test_best[[target_col]], predicted = bt_pred)
     if (nrow(bt_pva) > 0) safe_write_csv(bt_pva, config$files$stage4_backtest)
     bt_sc <- if (nrow(test_best) > 1) score_model(fit, test_best, target_col, compute_ic, pred_sign = pred_sign) else list(rmse = NA_real_, ic = NA_real_)
+    coef_path <- file.path(dirname(config$files$stage4_best_model_summary), "model_coefficients.csv")
+    safe_write_csv(data.frame(term = rownames(summary(fit)$coefficients), summary(fit)$coefficients, row.names = NULL, check.names = FALSE), coef_path)
     return(list(best_model = fit, best_formula = fm, best_predictors = bp, best_metrics = cached_models[1, , drop = FALSE], backtest_metrics = data.frame(test_rmse = bt_sc$rmse, test_ic = bt_sc$ic), all_models = cached_models, complexity_summary = if (file.exists(config$files$stage4_model_complexity_summary)) utils::read.csv(config$files$stage4_model_complexity_summary, stringsAsFactors = FALSE) else data.frame(), selected_k = length(bp), split_info = list(train_n = nrow(train_df), valid_n = nrow(valid_df), test_n = nrow(test_df), train_ratio = config$train_ratio, valid_ratio = config$valid_ratio)))
   }
 
@@ -261,6 +265,8 @@ search_best_model <- function(dataset, config, target_col = "target_log10_return
   safe_write_csv(data.frame(train_n = nrow(train_df), valid_n = nrow(valid_df), test_n = nrow(test_df), train_ratio = config$train_ratio, valid_ratio = config$valid_ratio), config$files$stage4_split_info)
   safe_write_csv(pva, config$files$stage4_pred_vs_actual)
   safe_write_csv(backtest_pva, config$files$stage4_backtest)
+  coef_path <- file.path(dirname(config$files$stage4_best_model_summary), "model_coefficients.csv")
+  safe_write_csv(data.frame(term = rownames(summary(best_model_fit)$coefficients), summary(best_model_fit)$coefficients, row.names = NULL, check.names = FALSE), coef_path)
   safe_write_lines(c(paste0("selected_k: ", selected_k), paste0("selection_reason: ", k_choice$reason), paste0("best_formula: ", deparse(best_formula)), paste0("best_rmse: ", best_candidates$valid_rmse[1]), paste0("best_adj_r2: ", best_candidates$adj_r_squared[1]), paste0("best_aic: ", best_candidates$aic[1]), paste0("best_bic: ", best_candidates$bic[1]), paste0("best_ic: ", best_candidates$ic[1]), paste0("backtest_rmse: ", backtest_sc$rmse), paste0("backtest_ic: ", backtest_sc$ic)), config$files$stage4_best_model_summary)
   write_stage4_runtime_summary(config, stage4_start, Sys.time(), nrow(all_models), best_candidates$valid_rmse[1], skipped = FALSE, filtered_count = filtered_counter, total_combinations = total_combos)
 
