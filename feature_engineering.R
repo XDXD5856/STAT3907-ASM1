@@ -31,7 +31,7 @@ rolling_sd <- function(x, k) {
   out
 }
 
-create_ticker_features <- function(d0, horizon = 21) {
+create_ticker_features <- function(d0, horizon = 21, include_time_index = FALSE) {
   d <- d0[order(d0$date), , drop = FALSE]
   cpx <- d$close; vol <- d$volume
   d$ret_1d <- safe_log_return(cpx, 1)
@@ -45,20 +45,25 @@ create_ticker_features <- function(d0, horizon = 21) {
   d$ma_ratio_5_21 <- rolling_mean(cpx, 5) / rolling_mean(cpx, 21)
   d$volatility_21 <- rolling_sd(d$ret_1d, 21)
   d$volume_z_21 <- (vol - rolling_mean(vol, 21)) / pmax(rolling_sd(vol, 21), 1e-8)
+  if (isTRUE(include_time_index)) d$time_index <- seq_len(nrow(d))
   d$target_21d <- forward_log_return(cpx, horizon)
   d
 }
 
 build_features_and_target <- function(raw_panel_df, config) {
   write_stage_log("stage3", "Stage 3 started", config)
+  if (!isTRUE(config$refresh_features) && file.exists(config$files$stage3_model_panel)) {
+    write_stage_log("stage3", "refresh_features=FALSE and feature panel exists; reusing local files", config)
+    return(load_stage3_outputs(config))
+  }
 
   per_ticker <- list(); summary_rows <- list()
   for (tk in unique(raw_panel_df$ticker)) {
     d0 <- raw_panel_df[raw_panel_df$ticker == tk, , drop = FALSE]
     if (nrow(d0) < (config$target_horizon + 30)) next
 
-    d1 <- create_ticker_features(d0, config$target_horizon)
-    utils::write.csv(d1, file.path(config$files$stage3_ticker_dir, paste0(tk, "_features.csv")), row.names = FALSE)
+    d1 <- create_ticker_features(d0, config$target_horizon, isTRUE(config$stage4_include_time_index))
+    safe_write_csv(d1, file.path(config$files$stage3_ticker_dir, paste0(tk, "_features.csv")))
 
     fcols <- setdiff(names(d1), c("ticker", "stock_code", "date"))
     summary_rows[[length(summary_rows) + 1]] <- data.frame(ticker = tk, rows = nrow(d1), missing_ratio = mean(!complete.cases(d1[, fcols, drop = FALSE])), stringsAsFactors = FALSE)
@@ -71,12 +76,19 @@ build_features_and_target <- function(raw_panel_df, config) {
   model_panel <- model_panel[order(model_panel$ticker, model_panel$date), , drop = FALSE]
   model_panel <- model_panel[!is.na(model_panel$target_21d), , drop = FALSE]
 
-  utils::write.csv(model_panel, config$files$stage3_model_panel, row.names = FALSE)
-  utils::write.csv(do.call(rbind, summary_rows), config$files$stage3_summary, row.names = FALSE)
+  safe_write_csv(model_panel, config$files$stage3_model_panel)
+  safe_write_csv(do.call(rbind, summary_rows), config$files$stage3_summary)
 
   save_stage_plot(function() hist(model_panel$target_21d, breaks = 60, col = "skyblue", main = "target_21d", xlab = "target_21d"), config$files$stage3_plot_target)
   save_stage_plot(function() hist(model_panel$ret_1d, breaks = 60, col = "tan", main = "ret_1d", xlab = "ret_1d"), config$files$stage3_plot_ret1d)
 
   write_stage_log("stage3", paste0("Stage 3 completed: rows=", nrow(model_panel), ", tickers=", length(unique(model_panel$ticker))), config)
   model_panel
+}
+
+load_stage3_outputs <- function(config) {
+  if (!file.exists(config$files$stage3_model_panel)) stop("Stage 3 cached output not found")
+  model_panel_cached <- utils::read.csv(config$files$stage3_model_panel, stringsAsFactors = FALSE)
+  if ("date" %in% names(model_panel_cached)) model_panel_cached$date <- as.Date(model_panel_cached$date)
+  model_panel_cached
 }
