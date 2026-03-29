@@ -58,12 +58,14 @@ search_best_model <- function(dataset, config, target_col = "target_21d", candid
 
   progress_every <- max(1L, as.integer(config$stage4_progress_every))
   partial_save_every <- max(1L, as.integer(config$stage4_partial_save_every))
-  results <- list(); models <- list(); mid <- 1L; combo_counter <- 0L; filtered_counter <- 0L
+  buffer_size <- max(1L, as.integer(config$stage4_checkpoint_buffer_size))
+  results_buffer <- list(); mid <- 1L; combo_counter <- 0L; filtered_counter <- 0L; flushed_model_count <- 0L
+  if (file.exists(config$files$stage4_all_models_partial)) file.remove(config$files$stage4_all_models_partial)
   cache_df <- load_stage4_model_cache(config)
-  cache_map <- setNames(seq_len(nrow(cache_df)), cache_df$model_id)
+  cache_map <- setNames(rep(TRUE, nrow(cache_df)), cache_df$model_id)
   cache_hits <- 0L
   new_models_evaluated <- 0L
-  new_cache_rows <- list()
+  cache_buffer <- list()
   complexity_stats <- vector("list", length(k_values))
   names(complexity_stats) <- as.character(k_values)
   for (k in k_values) complexity_stats[[as.character(k)]] <- list(best_rmse = Inf, best_ic = NA_real_, model_count = 0L)
@@ -90,7 +92,7 @@ search_best_model <- function(dataset, config, target_col = "target_21d", candid
 
       fm <- as.formula(paste(target_col, "~", paste(preds, collapse = " + ")))
       if (cache_model_id %in% names(cache_map)) {
-        cache_row <- cache_df[cache_map[[cache_model_id]], , drop = FALSE]
+        cache_row <- cache_df[cache_df$model_id == cache_model_id, , drop = FALSE]
         rmse_val <- as.numeric(cache_row$rmse[1])
         ic_val <- as.numeric(cache_row$ic[1])
         aic_val <- as.numeric(cache_row$aic[1])
@@ -111,7 +113,8 @@ search_best_model <- function(dataset, config, target_col = "target_21d", candid
         bic_val <- BIC(fit)
         adjr_val <- unname(s$adj.r.squared)
         new_models_evaluated <- new_models_evaluated + 1L
-        new_cache_rows[[length(new_cache_rows) + 1L]] <- data.frame(
+        cache_map[[cache_model_id]] <- TRUE
+        cache_buffer[[length(cache_buffer) + 1L]] <- data.frame(
           model_id = cache_model_id,
           rmse = rmse_val,
           ic = ic_val,
@@ -122,8 +125,7 @@ search_best_model <- function(dataset, config, target_col = "target_21d", candid
         )
       }
 
-      results[[length(results) + 1L]] <- data.frame(model_id = mid, predictors = paste(preds, collapse = ", "), n_predictors = length(preds), n_train = nrow(tr), n_valid = nrow(va), adj_r_squared = adjr_val, aic = aic_val, bic = bic_val, valid_rmse = rmse_val, ic = ic_val, stringsAsFactors = FALSE)
-      models[[as.character(mid)]] <- list(model = fit, formula = fm, predictors = preds)
+      results_buffer[[length(results_buffer) + 1L]] <- data.frame(model_id = mid, predictors = paste(preds, collapse = ", "), n_predictors = length(preds), n_train = nrow(tr), n_valid = nrow(va), adj_r_squared = adjr_val, aic = aic_val, bic = bic_val, valid_rmse = rmse_val, ic = ic_val, stringsAsFactors = FALSE)
       k_stat <- complexity_stats[[as.character(k)]]
       k_stat$model_count <- k_stat$model_count + 1L
       if (rmse_val < k_stat$best_rmse || (isTRUE(all.equal(rmse_val, k_stat$best_rmse)) && !is.na(ic_val) && (is.na(k_stat$best_ic) || ic_val > k_stat$best_ic))) {
@@ -134,10 +136,19 @@ search_best_model <- function(dataset, config, target_col = "target_21d", candid
       mid <- mid + 1L
 
       if (combo_counter %% progress_every == 0L) {
-        write_stage_log("stage4", paste0("Progress: evaluated ", combo_counter, "/", total_combos, " combinations; valid_models=", length(results)), config)
+        write_stage_log("stage4", paste0("Progress: evaluated ", combo_counter, "/", total_combos, " combinations; valid_models=", flushed_model_count + length(results_buffer)), config)
       }
-      if (length(results) > 0 && combo_counter %% partial_save_every == 0L) {
-        safe_write_csv(do.call(rbind, results), config$files$stage4_all_models_partial)
+      if (length(results_buffer) >= buffer_size || (combo_counter %% partial_save_every == 0L && length(results_buffer) > 0)) {
+        flushed_chunk <- do.call(rbind, results_buffer)
+        append_checkpoint_table(flushed_chunk, config$files$stage4_all_models_partial)
+        flushed_model_count <- flushed_model_count + nrow(flushed_chunk)
+        write_stage_log("stage4", paste0("Checkpoint saved: current model count=", flushed_model_count), config)
+        results_buffer <- list()
+      }
+      if (length(cache_buffer) >= buffer_size) {
+        cache_chunk <- do.call(rbind, cache_buffer)
+        append_checkpoint_table(cache_chunk, config$files$stage4_model_cache)
+        cache_buffer <- list()
       }
     }
     write_stage_log(
@@ -149,11 +160,17 @@ search_best_model <- function(dataset, config, target_col = "target_21d", candid
 
   write_stage_log("stage4", paste0("Feature-group filtered combinations: ", filtered_counter, "/", total_combos), config)
   write_stage_log("stage4", paste0("Model-cache stats: cache_hits=", cache_hits, ", new_models_evaluated=", new_models_evaluated), config)
-  if (length(new_cache_rows) > 0) {
-    cache_df <- upsert_stage4_model_cache(cache_df, do.call(rbind, new_cache_rows))
-    safe_write_csv(cache_df, config$files$stage4_model_cache)
+  if (length(cache_buffer) > 0) append_checkpoint_table(do.call(rbind, cache_buffer), config$files$stage4_model_cache)
+  cache_df <- load_stage4_model_cache(config)
+  if (nrow(cache_df) > 0) safe_write_csv(cache_df, config$files$stage4_model_cache)
+  if (length(results_buffer) > 0) {
+    flushed_chunk <- do.call(rbind, results_buffer)
+    append_checkpoint_table(flushed_chunk, config$files$stage4_all_models_partial)
+    flushed_model_count <- flushed_model_count + nrow(flushed_chunk)
+    write_stage_log("stage4", paste0("Checkpoint saved: current model count=", flushed_model_count), config)
+    results_buffer <- list()
   }
-  if (length(results) == 0) stop("No valid model fitted")
+  if (!file.exists(config$files$stage4_all_models_partial)) stop("No valid model fitted")
 
   complexity_summary <- do.call(
     rbind,
@@ -173,7 +190,7 @@ search_best_model <- function(dataset, config, target_col = "target_21d", candid
   selected_k <- as.integer(k_choice$k)
   write_stage_log("stage4", paste0("Selected predictor count k=", selected_k, " reason: ", k_choice$reason), config)
 
-  all_models <- do.call(rbind, results)
+  all_models <- utils::read.csv(config$files$stage4_all_models_partial, stringsAsFactors = FALSE)
   all_models <- all_models[order(all_models$valid_rmse, -all_models$ic), , drop = FALSE]
   best_candidates <- all_models[all_models$n_predictors == selected_k, , drop = FALSE]
   if (nrow(best_candidates) == 0) {
@@ -182,22 +199,20 @@ search_best_model <- function(dataset, config, target_col = "target_21d", candid
   }
   best_candidates <- best_candidates[order(best_candidates$valid_rmse, -best_candidates$ic), , drop = FALSE]
 
-  best_id <- as.character(best_candidates$model_id[1]); best_obj <- models[[best_id]]
-  if (is.null(best_obj$model)) {
-    best_cols <- c(target_col, best_obj$predictors)
-    tr_best <- train_df[complete.cases(train_df[, best_cols, drop = FALSE]), best_cols, drop = FALSE]
-    best_obj$model <- fit_ols_model(tr_best, best_obj$formula)
-  }
-  bp <- best_obj$predictors
+  best_row <- best_candidates[1, , drop = FALSE]
+  bp <- strsplit(as.character(best_row$predictors[1]), ",\\s*")[[1]]
+  best_formula <- as.formula(paste(target_col, "~", paste(bp, collapse = " + ")))
+  tr_best <- train_df[complete.cases(train_df[, c(target_col, bp), drop = FALSE]), c(target_col, bp), drop = FALSE]
+  best_model_fit <- fit_ols_model(tr_best, best_formula)
   va_best <- valid_df[complete.cases(valid_df[, c(target_col, bp), drop = FALSE]), c(target_col, bp), drop = FALSE]
-  pred <- as.numeric(predict(best_obj$model, newdata = va_best))
+  pred <- as.numeric(predict(best_model_fit, newdata = va_best))
   pva <- data.frame(actual = va_best[[target_col]], predicted = pred)
 
   safe_write_csv(all_models, config$files$stage4_all_models)
-  safe_write_csv(data.frame(predictor = best_obj$predictors), config$files$stage4_best_predictors)
+  safe_write_csv(data.frame(predictor = bp), config$files$stage4_best_predictors)
   safe_write_csv(data.frame(train_n = nrow(train_df), valid_n = nrow(valid_df), train_ratio = config$train_ratio), config$files$stage4_split_info)
   safe_write_csv(pva, config$files$stage4_pred_vs_actual)
-  safe_write_lines(c(paste0("selected_k: ", selected_k), paste0("selection_reason: ", k_choice$reason), paste0("best_formula: ", deparse(best_obj$formula)), paste0("best_rmse: ", best_candidates$valid_rmse[1]), paste0("best_adj_r2: ", best_candidates$adj_r_squared[1]), paste0("best_aic: ", best_candidates$aic[1]), paste0("best_bic: ", best_candidates$bic[1]), paste0("best_ic: ", best_candidates$ic[1])), config$files$stage4_best_model_summary)
+  safe_write_lines(c(paste0("selected_k: ", selected_k), paste0("selection_reason: ", k_choice$reason), paste0("best_formula: ", deparse(best_formula)), paste0("best_rmse: ", best_candidates$valid_rmse[1]), paste0("best_adj_r2: ", best_candidates$adj_r_squared[1]), paste0("best_aic: ", best_candidates$aic[1]), paste0("best_bic: ", best_candidates$bic[1]), paste0("best_ic: ", best_candidates$ic[1])), config$files$stage4_best_model_summary)
   write_stage4_runtime_summary(config, stage4_start, Sys.time(), nrow(all_models), best_candidates$valid_rmse[1], skipped = FALSE, filtered_count = filtered_counter, total_combinations = total_combos)
 
   save_stage_plot(function() plot(seq_len(nrow(all_models)), all_models$valid_rmse, type = "l", col = "steelblue", xlab = "Model rank", ylab = "RMSE", main = "RMSE by model rank"), config$files$stage4_plot_rmse)
@@ -207,7 +222,7 @@ search_best_model <- function(dataset, config, target_col = "target_21d", candid
 
   write_stage_log("stage4", paste0("Stage 4 completed: models=", nrow(all_models), ", best_rmse=", best_candidates$valid_rmse[1], ", selected_k=", selected_k), config)
 
-  list(best_model = best_obj$model, best_formula = best_obj$formula, best_predictors = best_obj$predictors, best_metrics = best_candidates[1, , drop = FALSE], all_models = all_models, complexity_summary = complexity_summary, selected_k = selected_k, split_info = list(train_n = nrow(train_df), valid_n = nrow(valid_df), train_ratio = config$train_ratio))
+  list(best_model = best_model_fit, best_formula = best_formula, best_predictors = bp, best_metrics = best_candidates[1, , drop = FALSE], all_models = all_models, complexity_summary = complexity_summary, selected_k = selected_k, split_info = list(train_n = nrow(train_df), valid_n = nrow(valid_df), train_ratio = config$train_ratio))
 }
 
 load_stage4_result <- function(dataset, config, target_col = "target_21d", date_col = "date", ticker_col = "ticker") {
@@ -265,6 +280,14 @@ upsert_stage4_model_cache <- function(existing_cache, new_rows) {
   combined <- combined[!duplicated(combined$model_id), , drop = FALSE]
   rownames(combined) <- NULL
   combined
+}
+
+append_checkpoint_table <- function(df, path) {
+  if (is.null(df) || nrow(df) == 0) return(invisible(FALSE))
+  ensure_parent_dir(path)
+  write_header <- !file.exists(path)
+  utils::write.table(df, file = path, sep = ",", row.names = FALSE, col.names = write_header, append = !write_header, quote = TRUE)
+  invisible(TRUE)
 }
 
 choose_optimal_k <- function(complexity_summary, config) {

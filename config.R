@@ -43,6 +43,7 @@ get_config <- function() {
     refresh_model_search = FALSE,
     stage4_progress_every = 50,
     stage4_partial_save_every = 50,
+    stage4_checkpoint_buffer_size = 20,
     stage4_use_rolling_window = FALSE,
     stage4_rolling_window_size = 252,
     stage4_include_time_index = FALSE,
