@@ -28,11 +28,10 @@ search_best_model <- function(dataset, config, target_col = "target_21d", candid
 
   split <- generate_time_series_split(
     dataset, config$train_ratio, date_col, ticker_col,
-    valid_ratio = as.numeric(config$valid_ratio),
     use_rolling_window = isTRUE(config$stage4_use_rolling_window),
     rolling_window_size = as.integer(config$stage4_rolling_window_size)
   )
-  train_df <- split$train; valid_df <- split$valid; test_df <- split$test
+  train_df <- split$train; valid_df <- split$test
 
   if (!isTRUE(config$refresh_model_search) && file.exists(config$files$stage4_all_models) && file.exists(config$files$stage4_best_predictors)) {
     write_stage_log("stage4", "refresh_model_search=FALSE and all_models.csv exists; skipping exhaustive rerun", config)
@@ -50,12 +49,7 @@ search_best_model <- function(dataset, config, target_col = "target_21d", candid
     if (nrow(pva) > 0) safe_write_csv(pva, config$files$stage4_pred_vs_actual)
 
     write_stage4_runtime_summary(config, stage4_start, Sys.time(), nrow(cached_models), cached_models$valid_rmse[1], skipped = TRUE, filtered_count = NA_integer_, total_combinations = NA_integer_)
-    test_best <- test_df[complete.cases(test_df[, c(target_col, bp), drop = FALSE]), c(target_col, bp), drop = FALSE]
-    bt_pred <- if (nrow(test_best) > 0) as.numeric(predict(fit, newdata = test_best)) else numeric(0)
-    bt_pva <- data.frame(actual = test_best[[target_col]], predicted = bt_pred)
-    if (nrow(bt_pva) > 0) safe_write_csv(bt_pva, config$files$stage4_backtest)
-    bt_sc <- if (nrow(test_best) > 1) score_model(fit, test_best, target_col, compute_ic) else list(rmse = NA_real_, ic = NA_real_)
-    return(list(best_model = fit, best_formula = fm, best_predictors = bp, best_metrics = cached_models[1, , drop = FALSE], backtest_metrics = data.frame(test_rmse = bt_sc$rmse, test_ic = bt_sc$ic), all_models = cached_models, complexity_summary = if (file.exists(config$files$stage4_model_complexity_summary)) utils::read.csv(config$files$stage4_model_complexity_summary, stringsAsFactors = FALSE) else data.frame(), selected_k = length(bp), split_info = list(train_n = nrow(train_df), valid_n = nrow(valid_df), test_n = nrow(test_df), train_ratio = config$train_ratio, valid_ratio = config$valid_ratio)))
+    return(list(best_model = fit, best_formula = fm, best_predictors = bp, best_metrics = cached_models[1, , drop = FALSE], all_models = cached_models, complexity_summary = if (file.exists(config$files$stage4_model_complexity_summary)) utils::read.csv(config$files$stage4_model_complexity_summary, stringsAsFactors = FALSE) else data.frame(), selected_k = length(bp), split_info = list(train_n = nrow(train_df), valid_n = nrow(valid_df), train_ratio = config$train_ratio)))
   }
 
   combos_by_k <- vapply(k_values, function(k) choose(length(avail), k), numeric(1))
@@ -220,10 +214,9 @@ search_best_model <- function(dataset, config, target_col = "target_21d", candid
 
   safe_write_csv(all_models, config$files$stage4_all_models)
   safe_write_csv(data.frame(predictor = bp), config$files$stage4_best_predictors)
-  safe_write_csv(data.frame(train_n = nrow(train_df), valid_n = nrow(valid_df), test_n = nrow(test_df), train_ratio = config$train_ratio, valid_ratio = config$valid_ratio), config$files$stage4_split_info)
+  safe_write_csv(data.frame(train_n = nrow(train_df), valid_n = nrow(valid_df), train_ratio = config$train_ratio), config$files$stage4_split_info)
   safe_write_csv(pva, config$files$stage4_pred_vs_actual)
-  safe_write_csv(backtest_pva, config$files$stage4_backtest)
-  safe_write_lines(c(paste0("selected_k: ", selected_k), paste0("selection_reason: ", k_choice$reason), paste0("best_formula: ", deparse(best_formula)), paste0("best_rmse: ", best_candidates$valid_rmse[1]), paste0("best_adj_r2: ", best_candidates$adj_r_squared[1]), paste0("best_aic: ", best_candidates$aic[1]), paste0("best_bic: ", best_candidates$bic[1]), paste0("best_ic: ", best_candidates$ic[1]), paste0("backtest_rmse: ", backtest_sc$rmse), paste0("backtest_ic: ", backtest_sc$ic)), config$files$stage4_best_model_summary)
+  safe_write_lines(c(paste0("selected_k: ", selected_k), paste0("selection_reason: ", k_choice$reason), paste0("best_formula: ", deparse(best_formula)), paste0("best_rmse: ", best_candidates$valid_rmse[1]), paste0("best_adj_r2: ", best_candidates$adj_r_squared[1]), paste0("best_aic: ", best_candidates$aic[1]), paste0("best_bic: ", best_candidates$bic[1]), paste0("best_ic: ", best_candidates$ic[1])), config$files$stage4_best_model_summary)
   write_stage4_runtime_summary(config, stage4_start, Sys.time(), nrow(all_models), best_candidates$valid_rmse[1], skipped = FALSE, filtered_count = filtered_counter, total_combinations = total_combos)
 
   save_stage_plot(function() plot(seq_len(nrow(all_models)), all_models$valid_rmse, type = "l", col = "steelblue", xlab = "Model rank", ylab = "RMSE", main = "RMSE by model rank"), config$files$stage4_plot_rmse)
@@ -233,7 +226,7 @@ search_best_model <- function(dataset, config, target_col = "target_21d", candid
 
   write_stage_log("stage4", paste0("Stage 4 completed: models=", nrow(all_models), ", best_rmse=", best_candidates$valid_rmse[1], ", selected_k=", selected_k), config)
 
-  list(best_model = best_model_fit, best_formula = best_formula, best_predictors = bp, best_metrics = best_candidates[1, , drop = FALSE], backtest_metrics = data.frame(test_rmse = backtest_sc$rmse, test_ic = backtest_sc$ic), all_models = all_models, complexity_summary = complexity_summary, selected_k = selected_k, split_info = list(train_n = nrow(train_df), valid_n = nrow(valid_df), test_n = nrow(test_df), train_ratio = config$train_ratio, valid_ratio = config$valid_ratio))
+  list(best_model = best_model_fit, best_formula = best_formula, best_predictors = bp, best_metrics = best_candidates[1, , drop = FALSE], all_models = all_models, complexity_summary = complexity_summary, selected_k = selected_k, split_info = list(train_n = nrow(train_df), valid_n = nrow(valid_df), train_ratio = config$train_ratio))
 }
 
 load_stage4_result <- function(dataset, config, target_col = "target_21d", date_col = "date", ticker_col = "ticker") {
@@ -243,7 +236,6 @@ load_stage4_result <- function(dataset, config, target_col = "target_21d", date_
 
   split <- generate_time_series_split(
     dataset, config$train_ratio, date_col, ticker_col,
-    valid_ratio = as.numeric(config$valid_ratio),
     use_rolling_window = isTRUE(config$stage4_use_rolling_window),
     rolling_window_size = as.integer(config$stage4_rolling_window_size)
   )
@@ -264,8 +256,7 @@ load_stage4_result <- function(dataset, config, target_col = "target_21d", date_
     all_models = cached_models,
     complexity_summary = if (file.exists(config$files$stage4_model_complexity_summary)) utils::read.csv(config$files$stage4_model_complexity_summary, stringsAsFactors = FALSE) else data.frame(),
     selected_k = length(bp),
-    backtest_metrics = data.frame(test_rmse = NA_real_, test_ic = NA_real_),
-    split_info = list(train_n = nrow(split$train), valid_n = nrow(split$valid), test_n = nrow(split$test), train_ratio = config$train_ratio, valid_ratio = config$valid_ratio)
+    split_info = list(train_n = nrow(split$train), valid_n = nrow(split$test), train_ratio = config$train_ratio)
   )
 }
 
@@ -392,25 +383,20 @@ detect_gpu_availability <- function() {
   list(usable = FALSE, detail = "No GPU indicator detected in environment")
 }
 
-generate_time_series_split <- function(df, train_ratio = 0.7, date_col = "date", ticker_col = "ticker", valid_ratio = 0.15, use_rolling_window = FALSE, rolling_window_size = 252) {
-  train_parts <- list(); valid_parts <- list(); test_parts <- list()
+generate_time_series_split <- function(df, train_ratio = 0.7, date_col = "date", ticker_col = "ticker", use_rolling_window = FALSE, rolling_window_size = 252) {
+  train_parts <- list(); test_parts <- list()
   for (tk in unique(df[[ticker_col]])) {
     d <- df[df[[ticker_col]] == tk, , drop = FALSE]
     d <- d[order(d[[date_col]]), , drop = FALSE]
-    n <- nrow(d); if (n < 3) next
-    n_train <- max(1, floor(n * train_ratio)); n_train <- min(n_train, n - 2)
-    n_valid <- max(1, floor(n * valid_ratio)); n_valid <- min(n_valid, n - n_train - 1)
-    valid_start <- n_train + 1
-    valid_end <- n_train + n_valid
-    test_start <- valid_end + 1
+    n <- nrow(d); if (n < 2) next
+    n_train <- max(1, floor(n * train_ratio)); n_train <- min(n_train, n - 1)
     if (isTRUE(use_rolling_window)) {
       idx_start <- max(1, n_train - rolling_window_size + 1)
       train_parts[[length(train_parts) + 1]] <- d[idx_start:n_train, , drop = FALSE]
     } else {
       train_parts[[length(train_parts) + 1]] <- d[seq_len(n_train), , drop = FALSE]
     }
-    valid_parts[[length(valid_parts) + 1]] <- d[valid_start:valid_end, , drop = FALSE]
-    test_parts[[length(test_parts) + 1]] <- d[test_start:n, , drop = FALSE]
+    test_parts[[length(test_parts) + 1]] <- d[(n_train + 1):n, , drop = FALSE]
   }
   list(train = do.call(rbind, train_parts), valid = do.call(rbind, valid_parts), test = do.call(rbind, test_parts))
 }

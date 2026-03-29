@@ -29,7 +29,6 @@ get_config <- function() {
     max_missing_ratio = 0.20,
     min_avg_daily_volume = 100000,
     train_ratio = 0.7,
-    valid_ratio = 0.15,
     max_predictors = 4,
     stage4_k_values = c(1, 2, 3, 4),
     stage4_ic_drop_tolerance = 0.02,
