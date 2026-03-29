@@ -106,8 +106,6 @@ generate_report <- function(prediction_result, raw_panel_df, model_result, unive
   if (nrow(bt) > 0) {
     bt$cum_strategy <- cumsum(bt$realized_return)
     bt$cum_benchmark <- cumsum(bt$benchmark_equal_weight)
-    bt$cum_strategy_log10 <- cumsum(log10(pmax(1 + bt$realized_return, 1e-8)))
-    bt$cum_benchmark_log10 <- cumsum(log10(pmax(1 + bt$benchmark_equal_weight, 1e-8)))
     safe_write_csv(bt, config$files$stage6_backtest_results)
     bt_summary <- data.frame(
       periods = nrow(bt),
@@ -122,7 +120,7 @@ generate_report <- function(prediction_result, raw_panel_df, model_result, unive
     bt$month <- format(as.Date(bt$signal_date), "%Y-%m")
     monthly <- aggregate(cbind(realized_return, benchmark_equal_weight) ~ month, data = bt, FUN = mean)
     save_stage_plot(function() barplot(monthly$realized_return, names.arg = monthly$month, las = 2, col = "steelblue", main = "Monthly Strategy Return"), config$files$stage6_monthly_return_plot)
-    save_stage_plot(function() { plot(bt$signal_date, bt$cum_strategy_log10, type = "l", col = "blue", lwd = 2, xlab = "Signal date", ylab = "Cumulative log10 return"); lines(bt$signal_date, bt$cum_benchmark_log10, col = "darkgray", lwd = 2); legend("topleft", legend = c("Strategy", "Equal-weight"), col = c("blue", "darkgray"), lty = 1, bty = "n") }, config$files$stage6_cumlog10_plot)
+    save_stage_plot(function() { plot(bt$signal_date, bt$cum_strategy, type = "l", col = "blue", lwd = 2, xlab = "Signal date", ylab = "Cumulative return"); lines(bt$signal_date, bt$cum_benchmark, col = "darkgray", lwd = 2); legend("topleft", legend = c("Strategy", "Equal-weight"), col = c("blue", "darkgray"), lty = 1, bty = "n") }, config$files$stage6_cumlog10_plot)
   }
 
   file.copy(config$files$stage6_ranked, config$files$submission_ranked, overwrite = TRUE)
