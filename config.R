@@ -5,7 +5,9 @@ load_required_packages <- function(attach = TRUE) {
   pkgs <- c("quantmod", "tidyverse", "lubridate", "broom", "zoo")
   missing_pkgs <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]
   if (length(missing_pkgs) > 0) stop(paste0("Missing packages: ", paste(missing_pkgs, collapse = ", ")))
-  if (isTRUE(attach)) invisible(lapply(pkgs, library, character.only = TRUE))
+  if (isTRUE(attach)) {
+    invisible(lapply(pkgs, function(pkg) suppressPackageStartupMessages(library(pkg, character.only = TRUE))))
+  }
   invisible(pkgs)
 }
 
@@ -23,14 +25,35 @@ get_config <- function() {
     start_date = as.Date("2015-01-01"),
     end_date = Sys.Date(),
     target_horizon = 21,
+    target_col = "target_log10_return",
     min_history_days = 252 * 3,
     max_missing_ratio = 0.20,
     min_avg_daily_volume = 100000,
     train_ratio = 0.7,
-    max_predictors = 15,
+    valid_ratio = 0.15,
+    max_predictors = 5,
+    stage4_k_values = c(1, 2, 3, 4),
+    stage4_ic_drop_tolerance = 0.02,
+    stage4_max_per_group = 2,
+    stage4_rmse_marginal_threshold = 0.01,
     candidate_predictors = NULL,
+    verbose_console = TRUE,
+    resume_run = TRUE,
+    run_id = NULL,
+    start_new_run = FALSE,
+    refresh_features = FALSE,
+    refresh_download = FALSE,
+    refresh_model_search = FALSE,
+    stage4_progress_every = 50,
+    stage4_partial_save_every = 50,
+    stage4_checkpoint_buffer_size = 20,
+    stage4_use_rolling_window = FALSE,
+    stage4_rolling_window_size = 252,
+    stage4_include_time_index = FALSE,
     investment_hkd = 1000000,
     top_n_chart = 20,
+    shared_data_path = "data",
+    run_output_path = "results",
     paths = list(
       data_raw = "data/raw",
       data_processed = "data/processed",
@@ -60,13 +83,18 @@ get_config <- function() {
       stage3_plot_ret1d = "results/stage3_ret_1d_distribution.png",
 
       stage4_all_models = "results/all_models.csv",
+      stage4_model_cache = "data/model_cache/model_results.csv",
       stage4_best_model_summary = "results/best_model_summary.txt",
+      stage4_summary = "results/stage4_summary.txt",
+      stage4_model_complexity_summary = "results/stage4_model_complexity_summary.csv",
       stage4_best_predictors = "results/best_predictors.csv",
       stage4_split_info = "results/split_info.csv",
+      stage4_backtest = "results/backtest_pred_vs_actual.csv",
       stage4_pred_vs_actual = "results/predicted_vs_actual.csv",
       stage4_plot_rmse = "results/rmse_by_model_rank.png",
       stage4_plot_top20 = "results/top20_models_bar.png",
       stage4_plot_scatter = "results/best_model_pred_vs_actual.png",
+      stage4_all_models_partial = "outputs/stage4_model_search/all_models_partial.csv",
 
       stage5_predictions = "results/predictions_latest.csv",
       stage5_latest_obs = "results/latest_observations_used.csv",
@@ -76,6 +104,10 @@ get_config <- function() {
       stage6_ranked = "report/ranked_stocks.csv",
       stage6_top_pick = "report/top_pick.csv",
       stage6_final_report = "report/final_report.txt",
+      stage6_cumlog10_plot = "report/cumulative_log10_return.png",
+      stage6_monthly_return_plot = "report/monthly_return.png",
+      stage6_backtest_results = "report/backtest_results.csv",
+      stage6_backtest_summary = "report/backtest_summary.csv",
       submission_ranked = "submission/ranked_stocks.csv",
       submission_top_pick = "submission/top_pick.csv",
       submission_report = "submission/final_report.txt"
