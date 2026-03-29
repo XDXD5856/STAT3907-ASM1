@@ -9,6 +9,7 @@ search_best_model <- function(dataset, config, target_col = "target_log10_return
   write_stage_log("stage4", paste0("GPU usable: ", gpu_info$usable, "; detail: ", gpu_info$detail), config)
 
   if (is.null(max_predictors)) max_predictors <- as.integer(config$max_predictors)
+  pred_sign <- if (isTRUE(config$invert_prediction_sign)) -1 else 1
 
   if (is.null(candidate_predictors)) {
     excluded <- c(ticker_col, "stock_code", date_col, target_col)
@@ -459,8 +460,8 @@ generate_time_series_split <- function(df, train_ratio = 0.7, date_col = "date",
 }
 
 fit_ols_model <- function(train_df, formula_obj) lm(formula_obj, data = train_df)
-score_model <- function(model, valid_df, target_col, compute_ic = TRUE) {
-  pred <- as.numeric(predict(model, newdata = valid_df)); actual <- as.numeric(valid_df[[target_col]])
+score_model <- function(model, valid_df, target_col, compute_ic = TRUE, pred_sign = 1) {
+  pred <- pred_sign * as.numeric(predict(model, newdata = valid_df)); actual <- as.numeric(valid_df[[target_col]])
   rmse <- sqrt(mean((actual - pred)^2, na.rm = TRUE))
   ic <- if (isTRUE(compute_ic) && length(pred) > 1) suppressWarnings(cor(pred, actual, use = "complete.obs")) else NA_real_
   list(rmse = rmse, ic = ic)
