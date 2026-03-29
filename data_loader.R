@@ -38,8 +38,15 @@ download_single_ticker_history <- function(ticker, from, to) {
 load_and_clean_data <- function(config) {
   write_stage_log("stage12", "Stage 1+2 started", config)
 
+  if (!isTRUE(config$refresh_download) && file.exists(config$files$stage12_raw_panel)) {
+    write_stage_log("stage12", "refresh_download=FALSE and raw panel exists; reusing local files", config)
+    raw_panel_cached <- utils::read.csv(config$files$stage12_raw_panel, stringsAsFactors = FALSE)
+    if ("date" %in% names(raw_panel_cached)) raw_panel_cached$date <- as.Date(raw_panel_cached$date)
+    return(raw_panel_cached)
+  }
+
   universe <- build_universe_from_codes(config)
-  utils::write.csv(universe, config$files$stage12_universe, row.names = FALSE)
+  safe_write_csv(universe, config$files$stage12_universe)
   write_stage_log("stage12", paste0("Universe size from fixed codes: ", nrow(universe)), config)
 
   success_list <- list()
@@ -47,10 +54,16 @@ load_and_clean_data <- function(config) {
 
   for (i in seq_len(nrow(universe))) {
     s <- universe$ticker[i]
-    cat("Downloading:", s, "\n")
     write_stage_log("stage12", paste0("Downloading: ", s), config)
+    ticker_raw_path <- file.path(config$files$stage12_ticker_dir, paste0(s, "_raw.csv"))
 
-    d <- tryCatch(download_single_ticker_history(s, config$start_date, config$end_date), error = function(e) NULL)
+    if (!isTRUE(config$refresh_download) && file.exists(ticker_raw_path)) {
+      d <- tryCatch(utils::read.csv(ticker_raw_path, stringsAsFactors = FALSE), error = function(e) NULL)
+      if (!is.null(d) && "date" %in% names(d)) d$date <- as.Date(d$date)
+      write_stage_log("stage12", paste0("Using cached raw ticker file: ", s), config)
+    } else {
+      d <- tryCatch(download_single_ticker_history(s, config$start_date, config$end_date), error = function(e) NULL)
+    }
 
     if (is.null(d) || nrow(d) == 0) {
       failed_list[[length(failed_list) + 1]] <- data.frame(ticker = s, stock_code = universe$stock_code[i], reason = "download_failed_or_empty", stringsAsFactors = FALSE)
@@ -75,7 +88,7 @@ load_and_clean_data <- function(config) {
     d <- d[, c("ticker", "stock_code", "date", "open", "high", "low", "close", "volume", "adjusted_close")]
     success_list[[length(success_list) + 1]] <- d
 
-    utils::write.csv(d, file.path(config$files$stage12_ticker_dir, paste0(s, "_raw.csv")), row.names = FALSE)
+    safe_write_csv(d, ticker_raw_path)
     save_stage_plot(
       plot_expr = function() plot(d$date, d$close, type = "l", col = "steelblue", xlab = "Date", ylab = "Close", main = paste("Close", s)),
       file_path = file.path(config$files$stage12_ticker_dir, paste0(s, "_close.png"))
@@ -90,9 +103,16 @@ load_and_clean_data <- function(config) {
 
   failed_df <- if (length(failed_list) > 0) do.call(rbind, failed_list) else data.frame()
 
-  utils::write.csv(raw_panel, config$files$stage12_raw_panel, row.names = FALSE)
-  utils::write.csv(failed_df, config$files$stage12_failed, row.names = FALSE)
+  safe_write_csv(raw_panel, config$files$stage12_raw_panel)
+  safe_write_csv(failed_df, config$files$stage12_failed)
 
   write_stage_log("stage12", paste0("Stage 1+2 completed: success_tickers=", length(unique(raw_panel$ticker)), ", failed=", nrow(failed_df)), config)
   raw_panel
+}
+
+load_stage12_outputs <- function(config) {
+  if (!file.exists(config$files$stage12_raw_panel)) stop("Stage 1+2 cached output not found")
+  raw_panel_cached <- utils::read.csv(config$files$stage12_raw_panel, stringsAsFactors = FALSE)
+  if ("date" %in% names(raw_panel_cached)) raw_panel_cached$date <- as.Date(raw_panel_cached$date)
+  raw_panel_cached
 }
