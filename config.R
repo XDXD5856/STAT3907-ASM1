@@ -79,6 +79,7 @@ get_config <- function() {
       stage3_plot_ret1d = "results/stage3_ret_1d_distribution.png",
 
       stage4_all_models = "results/all_models.csv",
+      stage4_model_cache = "data/model_cache/model_results.csv",
       stage4_best_model_summary = "results/best_model_summary.txt",
       stage4_summary = "results/stage4_summary.txt",
       stage4_model_complexity_summary = "results/stage4_model_complexity_summary.csv",

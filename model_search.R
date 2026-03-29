@@ -59,6 +59,11 @@ search_best_model <- function(dataset, config, target_col = "target_21d", candid
   progress_every <- max(1L, as.integer(config$stage4_progress_every))
   partial_save_every <- max(1L, as.integer(config$stage4_partial_save_every))
   results <- list(); models <- list(); mid <- 1L; combo_counter <- 0L; filtered_counter <- 0L
+  cache_df <- load_stage4_model_cache(config)
+  cache_map <- setNames(seq_len(nrow(cache_df)), cache_df$model_id)
+  cache_hits <- 0L
+  new_models_evaluated <- 0L
+  new_cache_rows <- list()
   complexity_stats <- vector("list", length(k_values))
   names(complexity_stats) <- as.character(k_values)
   for (k in k_values) complexity_stats[[as.character(k)]] <- list(best_rmse = Inf, best_ic = NA_real_, model_count = 0L)
@@ -77,26 +82,53 @@ search_best_model <- function(dataset, config, target_col = "target_21d", candid
         combos_filtered_k <- combos_filtered_k + 1L
         next
       }
+      cache_model_id <- paste(sort(preds), collapse = "|")
       cols <- c(target_col, preds)
       tr <- train_df[complete.cases(train_df[, cols, drop = FALSE]), cols, drop = FALSE]
       va <- valid_df[complete.cases(valid_df[, cols, drop = FALSE]), cols, drop = FALSE]
       if (nrow(tr) < (length(preds) + 2L) || nrow(va) < 2L) next
 
       fm <- as.formula(paste(target_col, "~", paste(preds, collapse = " + ")))
-      fit <- tryCatch(fit_ols_model(tr, fm), error = function(e) NULL)
-      if (is.null(fit)) next
+      if (cache_model_id %in% names(cache_map)) {
+        cache_row <- cache_df[cache_map[[cache_model_id]], , drop = FALSE]
+        rmse_val <- as.numeric(cache_row$rmse[1])
+        ic_val <- as.numeric(cache_row$ic[1])
+        aic_val <- as.numeric(cache_row$aic[1])
+        bic_val <- as.numeric(cache_row$bic[1])
+        adjr_val <- NA_real_
+        fit <- NULL
+        cache_hits <- cache_hits + 1L
+      } else {
+        fit <- tryCatch(fit_ols_model(tr, fm), error = function(e) NULL)
+        if (is.null(fit)) next
 
-      sc <- score_model(fit, va, target_col, compute_ic)
-      if (!is.finite(sc$rmse)) next
+        sc <- score_model(fit, va, target_col, compute_ic)
+        if (!is.finite(sc$rmse)) next
+        s <- summary(fit)
+        rmse_val <- sc$rmse
+        ic_val <- sc$ic
+        aic_val <- AIC(fit)
+        bic_val <- BIC(fit)
+        adjr_val <- unname(s$adj.r.squared)
+        new_models_evaluated <- new_models_evaluated + 1L
+        new_cache_rows[[length(new_cache_rows) + 1L]] <- data.frame(
+          model_id = cache_model_id,
+          rmse = rmse_val,
+          ic = ic_val,
+          aic = aic_val,
+          bic = bic_val,
+          n_obs = nrow(tr),
+          stringsAsFactors = FALSE
+        )
+      }
 
-      s <- summary(fit)
-      results[[length(results) + 1L]] <- data.frame(model_id = mid, predictors = paste(preds, collapse = ", "), n_predictors = length(preds), n_train = nrow(tr), n_valid = nrow(va), adj_r_squared = unname(s$adj.r.squared), aic = AIC(fit), bic = BIC(fit), valid_rmse = sc$rmse, ic = sc$ic, stringsAsFactors = FALSE)
+      results[[length(results) + 1L]] <- data.frame(model_id = mid, predictors = paste(preds, collapse = ", "), n_predictors = length(preds), n_train = nrow(tr), n_valid = nrow(va), adj_r_squared = adjr_val, aic = aic_val, bic = bic_val, valid_rmse = rmse_val, ic = ic_val, stringsAsFactors = FALSE)
       models[[as.character(mid)]] <- list(model = fit, formula = fm, predictors = preds)
       k_stat <- complexity_stats[[as.character(k)]]
       k_stat$model_count <- k_stat$model_count + 1L
-      if (sc$rmse < k_stat$best_rmse || (isTRUE(all.equal(sc$rmse, k_stat$best_rmse)) && !is.na(sc$ic) && (is.na(k_stat$best_ic) || sc$ic > k_stat$best_ic))) {
-        k_stat$best_rmse <- sc$rmse
-        k_stat$best_ic <- sc$ic
+      if (rmse_val < k_stat$best_rmse || (isTRUE(all.equal(rmse_val, k_stat$best_rmse)) && !is.na(ic_val) && (is.na(k_stat$best_ic) || ic_val > k_stat$best_ic))) {
+        k_stat$best_rmse <- rmse_val
+        k_stat$best_ic <- ic_val
       }
       complexity_stats[[as.character(k)]] <- k_stat
       mid <- mid + 1L
@@ -116,6 +148,11 @@ search_best_model <- function(dataset, config, target_col = "target_21d", candid
   }
 
   write_stage_log("stage4", paste0("Feature-group filtered combinations: ", filtered_counter, "/", total_combos), config)
+  write_stage_log("stage4", paste0("Model-cache stats: cache_hits=", cache_hits, ", new_models_evaluated=", new_models_evaluated), config)
+  if (length(new_cache_rows) > 0) {
+    cache_df <- upsert_stage4_model_cache(cache_df, do.call(rbind, new_cache_rows))
+    safe_write_csv(cache_df, config$files$stage4_model_cache)
+  }
   if (length(results) == 0) stop("No valid model fitted")
 
   complexity_summary <- do.call(
@@ -146,6 +183,11 @@ search_best_model <- function(dataset, config, target_col = "target_21d", candid
   best_candidates <- best_candidates[order(best_candidates$valid_rmse, -best_candidates$ic), , drop = FALSE]
 
   best_id <- as.character(best_candidates$model_id[1]); best_obj <- models[[best_id]]
+  if (is.null(best_obj$model)) {
+    best_cols <- c(target_col, best_obj$predictors)
+    tr_best <- train_df[complete.cases(train_df[, best_cols, drop = FALSE]), best_cols, drop = FALSE]
+    best_obj$model <- fit_ols_model(tr_best, best_obj$formula)
+  }
   bp <- best_obj$predictors
   va_best <- valid_df[complete.cases(valid_df[, c(target_col, bp), drop = FALSE]), c(target_col, bp), drop = FALSE]
   pred <- as.numeric(predict(best_obj$model, newdata = va_best))
@@ -201,6 +243,28 @@ load_stage4_result <- function(dataset, config, target_col = "target_21d", date_
 
 get_stage4_k_values <- function(config, min_predictors, max_predictors) {
   seq(min_predictors, max_predictors)
+}
+
+load_stage4_model_cache <- function(config) {
+  cache_path <- config$files$stage4_model_cache
+  if (!file.exists(cache_path)) {
+    return(data.frame(model_id = character(0), rmse = numeric(0), ic = numeric(0), aic = numeric(0), bic = numeric(0), n_obs = integer(0), stringsAsFactors = FALSE))
+  }
+  out <- utils::read.csv(cache_path, stringsAsFactors = FALSE)
+  req <- c("model_id", "rmse", "ic", "aic", "bic", "n_obs")
+  missing_cols <- setdiff(req, names(out))
+  for (mc in missing_cols) out[[mc]] <- NA
+  out <- out[, req, drop = FALSE]
+  out <- out[!duplicated(out$model_id), , drop = FALSE]
+  out
+}
+
+upsert_stage4_model_cache <- function(existing_cache, new_rows) {
+  if (is.null(new_rows) || nrow(new_rows) == 0) return(existing_cache)
+  combined <- rbind(existing_cache, new_rows[, names(existing_cache), drop = FALSE])
+  combined <- combined[!duplicated(combined$model_id), , drop = FALSE]
+  rownames(combined) <- NULL
+  combined
 }
 
 choose_optimal_k <- function(complexity_summary, config) {

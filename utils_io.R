@@ -96,6 +96,7 @@ apply_run_paths <- function(config, run_id) {
   shared_root <- if (!is.null(config$shared_data_path)) config$shared_data_path else "data"
   shared_raw <- file.path(shared_root, "raw")
   shared_processed <- file.path(shared_root, "processed")
+  shared_model_cache <- file.path(shared_root, "model_cache", "model_results.csv")
   run_results <- file.path(base_paths$results, run_id)
   run_logs <- file.path(base_paths$logs, run_id)
   run_report <- file.path(base_paths$report, run_id)
@@ -143,6 +144,7 @@ apply_run_paths <- function(config, run_id) {
     stage3_plot_ret1d = file.path(run_results, "stage3_ret_1d_distribution.png"),
 
     stage4_all_models = file.path(run_results, "all_models.csv"),
+    stage4_model_cache = shared_model_cache,
     stage4_best_model_summary = file.path(run_results, "best_model_summary.txt"),
     stage4_summary = file.path(run_results, "stage4_summary.txt"),
     stage4_model_complexity_summary = file.path(run_results, "stage4_model_complexity_summary.csv"),
